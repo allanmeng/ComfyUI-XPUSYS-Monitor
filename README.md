@@ -33,7 +33,7 @@
 
 扫描当前工作流中所有活跃的模型节点，预测运行所需显存，在运行前给出成功率评估。
 
-![PRED 预测面板](screenshot/GPU_Predict_CN.png)
+<img src="screenshot/GPU_Predict_CN.png" width="600" alt="PRED 预测面板" />
 
 **胶囊显示：**
 
@@ -68,7 +68,8 @@
 
 ### 🖥️ CPU — 处理器
 
-![CPU 面板](screenshot/CPU_CN.png)
+<img src="screenshot/CPU_CN.png" width="400" alt="CPU 面板" />
+
 
 **胶囊显示：**
 
@@ -96,7 +97,7 @@ CPU 23.5% @ 4.80GHz
 
 ### 💾 RAM — 系统内存
 
-![RAM 面板](screenshot/RAM_CN.png)
+<img src="screenshot/RAM_CN.png" width="300" alt="RAM 面板" />
 
 **胶囊显示：**
 
@@ -125,7 +126,8 @@ RAM 61.3%
 
 GPU 综合组的第一格，监控 GPU 计算核心的运行状态。
 
-![GPU 引擎面板](screenshot/GPU_Engine_CN.png)
+<img src="screenshot/GPU_Engine_CN.png" width="400" alt="GPU 引擎面板" />
+
 
 **胶囊显示：**
 
@@ -155,7 +157,7 @@ GPU 87.2% @ 2450MHz | 62°C
 
 GPU 综合组的第二格，展示驱动层面的显存使用情况。
 
-![VRAM 面板](screenshot/GPU_VRAM_CN.png)
+<img src="screenshot/GPU_VRAM_CN.png" width="600" alt="GPU VRAM 面板" />
 
 **胶囊显示：**
 
@@ -187,7 +189,7 @@ VRAM 9.8 / 12.0 GB
 
 GPU 综合组的第三格，单独展示 PyTorch 的显存预留总量。
 
-![RSV 缓存面板](screenshot/GPU_PytorchCache_CN.png)
+<img src="screenshot/GPU_PytorchCache_CN.png" width="300" alt="缓存面板" />
 
 **胶囊显示：**
 
@@ -217,7 +219,7 @@ RSV 2.1 GB
 
 GPU 综合组的第四格，展示 GPU 瞬时功耗及 TGP 负载比例。
 
-![PWR 功耗面板](screenshot/Power_CN.png)
+<img src="screenshot/Power_CN.png" width="400" alt="PWR 功耗面板" />
 
 **胶囊显示：**
 
