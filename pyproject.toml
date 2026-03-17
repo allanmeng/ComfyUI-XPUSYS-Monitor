@@ -1,0 +1,14 @@
+[project]
+name = "ComfyUI-XPUSYS-Monitor"
+version = "1.0.0"
+description = "Intel Arc-first ComfyUI monitor with real-time GPU/CPU/RAM stats and an exclusive workflow execution success rate predictor. NVIDIA (CUDA) fully supported."
+license = { text = "MIT" }
+dependencies = ["psutil", "pynvml"]
+
+[project.urls]
+Repository = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor"
+
+[tool.comfy]
+PublisherId = "allanmeng"
+DisplayName = "ComfyUI-XPUSYS-Monitor"
+Icon = ""

@@ -14,7 +14,7 @@
 
 ## Overview
 
-**ComfyUI-XPUSYS-Monitor** is a lightweight ComfyUI hardware monitoring plugin that displays real-time GPU, CPU, and memory metrics as capsules in the top menu bar. It also features an exclusive **Workflow VRAM Predictor** that estimates your run's success rate before you even click Generate.
+**ComfyUI-XPUSYS-Monitor** is an Intel Arc-first ComfyUI hardware monitor that displays real-time GPU, CPU, and RAM stats as capsules in the top menu bar. It features an exclusive **Workflow Execution Success Rate Predictor** that estimates whether your workflow will complete successfully — before you even click Run. NVIDIA (CUDA) is fully supported.
 
 ---
 
