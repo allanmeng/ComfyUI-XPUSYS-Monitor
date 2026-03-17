@@ -683,9 +683,19 @@ function calcPrediction(mTotal, mPeak, snap) {
   const cRam  = rFree;   // ram_free_gb 已是 OS 报告的真实空闲量，直接使用
   const sVirt = Math.max(0, cLimit - cUsed);   // 与内存胶囊"虚拟内存"定义一致
 
+  // ── 平台系数：NVIDIA UVM 允许更大显存溢出 ─────────────────────────────
+  const PLATFORM_GAMMA = {
+    "intel":  1.0,   // Intel Arc：硬约束严格
+    "nvidia": 4.0,   // NVIDIA：UVM 支持约 4x 溢出
+  };
+  const gpuVendor = snap?.gpu_vendor ?? "intel";
+  const gamma = PLATFORM_GAMMA[gpuVendor] ?? 1.0;
+
   // ── 硬约束：峰值模型 vs 显存 ──────────────────────────────────────────
   const dPeak = Math.max(0, mPeak - vEff);
-  const pPeak = dPeak === 0 ? 1 : Math.max(0.02, Math.exp(-3 * dPeak / vEff));
+  // 平台差异化：NVIDIA 的 effective 显存按 gamma 倍计算
+  const vEffPlatform = vEff * gamma;
+  const pPeak = dPeak === 0 ? 1 : Math.max(0.02, Math.exp(-3 * dPeak / vEffPlatform));
 
   // ── 软约束：总量 vs 显存+内存（串行回收） ────────────────────────────
   const dLoad = Math.max(0, mTotal - vEff);
