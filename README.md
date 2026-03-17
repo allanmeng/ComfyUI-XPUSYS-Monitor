@@ -1,5 +1,7 @@
 # ComfyUI-XPUSYS-Monitor
 
+> 🌐 [English](README_EN.md) | **中文**
+
 > **多元与共生：一份来自"少数派"的诚意**
 >
 > 在 ComfyUI 的生态中，Intel Arc (XPU) 用户或许是"少数派"，但这正是我们出发的理由。由于原生 XPU 监控插件的稀缺，我们立足当下，旨在为 Intel 显卡用户提供符合底层规范、稳定且极简的工具支持。
