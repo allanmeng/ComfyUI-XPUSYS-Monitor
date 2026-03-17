@@ -723,7 +723,7 @@ function calcPrediction(mTotal, mPeak, snap) {
     color = "#ff4d4f"; label = { zh: "危险",   en: "Critical" };
   }
 
-  return { rate, color, label, dPeak, dLoad, vEff, cRam, sVirt, pPeak, pLoad };
+  return { rate, color, label, dPeak, dLoad, vEff, cRam, sVirt, pPeak, pLoad, gamma, gpuVendor };
 }
 
 // ---------------------------------------------------------------------------
@@ -925,7 +925,10 @@ function buildPredictorTip(snap, eng) {
   let html = tipTitle(eng ? "🎯 Current Load List" : "🎯 当前加载清单");
 
   // ── 成功率输入参数 ──
+  const vendorName = pred.gpuVendor === "nvidia" ? "NVIDIA UVM" : "Intel Arc";
+  const overflowTol = pred.gamma.toFixed(1) + "x";
   if (eng) {
+    html += tipRow("Overflow Tolerance", overflowTol + " (" + vendorName + ")", "#36cfc9");
     html += tipRow("Eff. VRAM Cap",      pred.vEff.toFixed(2)  + " GB", "#36cfc9");
     html += tipRow("Peak Model",         mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "#ff4d4f" : "#52c41a");
     html += tipRow("  VRAM Gap",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "#faad14" : "#555");
@@ -937,6 +940,7 @@ function buildPredictorTip(snap, eng) {
     html += tipRow("  P_load",           (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "#faad14" : "#52c41a");
     html += tipRow("Success Rate",       pred.rate + " %",               pred.color);
   } else {
+    html += tipRow("溢出容忍",           overflowTol + " (" + vendorName + ")", "#36cfc9");
     html += tipRow("显存上限",           pred.vEff.toFixed(2)  + " GB", "#36cfc9");
     html += tipRow("峰值模型",           mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "#ff4d4f" : "#52c41a");
     html += tipRow("  显存缺口",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "#faad14" : "#555");
