@@ -13,7 +13,9 @@ import { api } from "../../scripts/api.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const NS = "XPUSYS_Mon";
+const NS      = "XPUSYS_Mon";
+const VERSION = "1.0.0";
+const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
   fontSize:      `${NS}.FontSize`,
@@ -27,25 +29,71 @@ const S = {
   showPower:     `${NS}.ShowPower`,
 };
 
-// Intel Arc PCI device ID → spec TGP (W) — Intel ARK / product pages
+// Intel Arc PCI device ID → spec TBP (W) — Intel ARK / product pages / NotebookCheck
+// Only includes cards with practical AI inference capability (≥8 GB VRAM or workstation Pro series)
 const ARC_PCI_TGP = {
-  "0xe20b": 190,   // Arc B580
-  "0xe20a": 190,   // Arc B770
-  "0xe208": 120,   // Arc B580M
-  "0x56a0": 225,   // Arc A770
-  "0x56a1": 150,   // Arc A750
-  "0x56a5": 75,    // Arc A580
-  "0x56b0": 75,    // Arc A380
-  "0x56b2": 25,    // Arc A310
+  // ── Battlemage (Xe2) — B series consumer ─────────────────────────────────
+  "0xe20b": 190,   // Arc B580        (desktop, 12 GB)
+  "0xe20a": 190,   // Arc B770        (desktop, 16 GB, announced)
+  "0xe20c": 150,   // Arc B570        (desktop, 10 GB)
+  "0xe208": 120,   // Arc B580M       (mobile, 12 GB)
+  "0xe209": 100,   // Arc B570M       (mobile, 10 GB)
+
+  // ── Battlemage (Xe2) — B series Pro (workstation) ─────────────────────────
+  "0xe211": 200,   // Arc Pro B60     (desktop, 24 GB, TBP 120–200 W, use max)
+  "0xe212": 70,    // Arc Pro B50     (desktop, 16 GB)
+
+  // ── Alchemist (Xe-HPG) — A series consumer desktop ───────────────────────
+  "0x56a0": 225,   // Arc A770        (desktop, 16 GB)
+  "0x56a1": 150,   // Arc A750        (desktop, 8 GB)
+  "0x56a2": 75,    // Arc A580        (desktop, 8 GB)
+  "0x56a5": 75,    // Arc A380        (desktop, 6 GB — borderline, kept)
+
+  // ── Alchemist (Xe-HPG) — A series consumer mobile ────────────────────────
+  "0x5690": 150,   // Arc A770M       (120–150 W configurable, use max)
+  "0x5691": 120,   // Arc A730M       (80–120 W configurable, use max)
+  "0x5696": 80,    // Arc A570M       (50–80 W configurable, use max)
+  "0x5692": 80,    // Arc A550M       (60–80 W configurable, use max)
+  "0x5697": 50,    // Arc A530M       (35–50 W configurable, use max)
+
+  // ── Alchemist (Xe-HPG) — A series Pro (workstation) ──────────────────────
+  "0x56b3": 130,   // Arc Pro A60     (desktop, 12 GB)
+  "0x56b2": 75,    // Arc Pro A60M    (mobile, 8 GB)   — device ID: 56B2
+  "0x56b1": 50,    // Arc Pro A40/A50 (desktop, 6 GB)  — shared device ID
+  "0x56b0": 35,    // Arc Pro A30M    (mobile, 4 GB)
 };
 
 // Intel Arc PCI device ID → marketing name
 const ARC_PCI_NAMES = {
-  "0xe20b": "Intel Arc B580",   "0xe20a": "Intel Arc B770",  "0xe208": "Intel Arc B580M",
-  "0x56a0": "Intel Arc A770",   "0x56a1": "Intel Arc A750",  "0x56a5": "Intel Arc A580",
-  "0x5690": "Intel Arc A770M",  "0x5691": "Intel Arc A750M", "0x5692": "Intel Arc A550M",
-  "0x56b0": "Intel Arc A380",   "0x56b2": "Intel Arc A310",
-  "0x56c0": "Intel Arc A370M",  "0x56c1": "Intel Arc A350M", "0x56c2": "Intel Arc A730M",
+  // ── Battlemage (Xe2) — B series consumer ─────────────────────────────────
+  "0xe20b": "Intel Arc B580",
+  "0xe20a": "Intel Arc B770",
+  "0xe20c": "Intel Arc B570",
+  "0xe208": "Intel Arc B580M",
+  "0xe209": "Intel Arc B570M",
+
+  // ── Battlemage (Xe2) — B series Pro (workstation) ─────────────────────────
+  "0xe211": "Intel Arc Pro B60",
+  "0xe212": "Intel Arc Pro B50",
+
+  // ── Alchemist (Xe-HPG) — A series consumer desktop ───────────────────────
+  "0x56a0": "Intel Arc A770",
+  "0x56a1": "Intel Arc A750",
+  "0x56a2": "Intel Arc A580",
+  "0x56a5": "Intel Arc A380",
+
+  // ── Alchemist (Xe-HPG) — A series consumer mobile ────────────────────────
+  "0x5690": "Intel Arc A770M",
+  "0x5691": "Intel Arc A730M",
+  "0x5696": "Intel Arc A570M",
+  "0x5692": "Intel Arc A550M",
+  "0x5697": "Intel Arc A530M",
+
+  // ── Alchemist (Xe-HPG) — A series Pro (workstation) ──────────────────────
+  "0x56b3": "Intel Arc Pro A60",
+  "0x56b2": "Intel Arc Pro A60M",
+  "0x56b1": "Intel Arc Pro A40/A50", // A40 and A50 share the same device ID
+  "0x56b0": "Intel Arc Pro A30M",
 };
 
 // ---------------------------------------------------------------------------
@@ -1047,6 +1095,49 @@ app.registerExtension({
           `<span style="color:#36cfc9;font-weight:600;">Highlight:</span> ` +
           `Exclusive Model VRAM Prediction to anticipate hardware strain before generation. We aim to fill the gap in XPU monitoring with stable, cross-platform insights. Enjoy!`;
         wrap.innerHTML = en() ? enText : zhText;
+
+        // ── 版本号 + GitHub 按钮 ──────────────────────────────────────────
+        const bar = document.createElement("div");
+        bar.style.cssText =
+          "display:flex;align-items:center;justify-content:flex-end;gap:8px;" +
+          "margin-top:16px;flex-wrap:wrap;border-top:1px solid #333;padding-top:10px;";
+
+        // 版本徽章
+        const verBadge = document.createElement("span");
+        verBadge.style.cssText =
+          "display:inline-flex;align-items:center;gap:0;border-radius:4px;overflow:hidden;" +
+          "font-size:12px;font-weight:600;line-height:1;";
+        verBadge.innerHTML =
+          `<span style="background:#555;color:#fff;padding:4px 7px;">${t("版本", "Version")}</span>` +
+          `<span style="background:#4caf50;color:#fff;padding:4px 7px;">${VERSION}</span>`;
+
+        // GitHub 按钮
+        const ghBtn = document.createElement("a");
+        ghBtn.href   = GITHUB;
+        ghBtn.target = "_blank";
+        ghBtn.rel    = "noopener noreferrer";
+        ghBtn.style.cssText =
+          "display:inline-flex;align-items:center;gap:5px;padding:4px 10px;" +
+          "background:#24292e;color:#fff;border-radius:4px;font-size:12px;font-weight:600;" +
+          "text-decoration:none;line-height:1;transition:background .15s;";
+        ghBtn.onmouseenter = () => { ghBtn.style.background = "#444d56"; };
+        ghBtn.onmouseleave = () => { ghBtn.style.background = "#24292e"; };
+        ghBtn.innerHTML =
+          `<svg width="14" height="14" viewBox="0 0 16 16" fill="#fff" style="flex-shrink:0;">` +
+          `<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38` +
+          `0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52` +
+          `-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07` +
+          `-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12` +
+          `0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82` +
+          ` 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95` +
+          `.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8` +
+          `c0-4.42-3.58-8-8-8z"/></svg>` +
+          `GitHub`;
+
+        bar.appendChild(verBadge);
+        bar.appendChild(ghBtn);
+        wrap.appendChild(bar);
+
         return wrap;
       },
       defaultValue: "",
