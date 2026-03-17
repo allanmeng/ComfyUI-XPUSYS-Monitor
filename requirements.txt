@@ -1,0 +1,20 @@
+# CPU / RAM monitoring — required by both IntelProvider and NvidiaProvider
+psutil
+
+# NVIDIA GPU monitoring — required by NvidiaProvider only
+# Safe to install on Intel machines; unused if no NVIDIA driver is present
+pynvml
+
+# ---------------------------------------------------------------------------
+# The following are provided by ComfyUI itself — DO NOT add them here.
+# Listed for reference only so manual environment setups know the minimums.
+# ---------------------------------------------------------------------------
+#
+# torch >= 2.5
+#   torch.xpu (Intel Arc) was officially introduced in PyTorch 2.5.
+#   torch.cuda (NVIDIA) has been stable since PyTorch 1.x.
+#   Install the XPU-enabled build from: https://pytorch.org/get-started/locally/
+#
+# aiohttp >= 3.8
+#   Used for HTTP routes and WebSocket broadcast (web.json_response, server.send_json).
+#   ComfyUI already depends on aiohttp; no separate installation needed.
