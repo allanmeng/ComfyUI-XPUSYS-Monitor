@@ -1,336 +1,334 @@
 # ComfyUI-XPUSYS-Monitor
 
-> 🌐 [English](README_EN.md) | **中文**
+> 🌐 **English** | [中文](README_CN.md)
 
-> **多元与共生：一份来自"少数派"的诚意**
+> **Diversity & Coexistence: A Sincere Effort from the "Minority"**
 >
-> 在 ComfyUI 的生态中，Intel Arc (XPU) 用户或许是"少数派"，但这正是我们出发的理由。由于原生 XPU 监控插件的稀缺，我们立足当下，旨在为 Intel 显卡用户提供符合底层规范、稳定且极简的工具支持。
+> In the ComfyUI ecosystem, Intel Arc (XPU) users may be in the "minority" — but that's exactly why we started. With a scarcity of native XPU monitoring plugins, we set out to build a stable, minimal tool that respects the underlying hardware specs for Intel GPU users.
 >
-> 但我们并未止步于此——通过架构的通用化设计，这款插件已兼容 NVIDIA (CUDA) 平台并计划 AMD (ROCm) 平台的适配。
+> But we didn't stop there. Through a generalized architecture, this plugin now fully supports NVIDIA (CUDA) and has AMD (ROCm) support in the pipeline.
 >
-> 无论你手持哪种硬件，都能通过它一眼洞悉系统脉搏。这是一款诞生于 XPU 社区、并向全平台开发者开放的工具，希望你喜欢。
+> No matter what GPU you're running, this plugin gives you a clear, at-a-glance view of your system's vitals. Born in the XPU community, open to all platforms — we hope you enjoy it.
 
 ---
 
-## 简介
+## Overview
 
-**ComfyUI-XPUSYS-Monitor** 是一款轻量级的 ComfyUI 硬件监控插件，在顶部菜单栏以胶囊形式实时展示 GPU、CPU、内存等关键指标，并提供独家的**工作流显存预测**功能，让你在生成前就能预判成功率。
+**ComfyUI-XPUSYS-Monitor** is a lightweight ComfyUI hardware monitoring plugin that displays real-time GPU, CPU, and memory metrics as capsules in the top menu bar. It also features an exclusive **Workflow VRAM Predictor** that estimates your run's success rate before you even click Generate.
 
 ---
 
-## 功能特性
+## Features
 
-状态栏从左到右共有六个胶囊，分为两组：
+The status bar contains seven capsules from left to right, split into two groups:
 
 ```
 [ PRED ]  [ CPU ]  [ RAM ]  |  GPU  |  VRAM  |  RSV  |  PWR  |
-  预测      处理器   内存        └────────── GPU 综合组 ──────────┘
+ Predict   Processor Memory     └──────── GPU Group ──────────┘
 ```
 
-> 鼠标悬停在任意胶囊上可展开详细数据面板。
+> Hover over any capsule to expand its detailed data panel.
 
 ---
 
-### 🔮 PRED — 工作流显存预测
+### 🔮 PRED — Workflow VRAM Predictor
 
-扫描当前工作流中所有活跃的模型节点，预测运行所需显存，在运行前给出成功率评估。
+Scans all active model nodes in the current workflow, estimates the VRAM required to run, and gives a success rate estimate before execution.
 
-<img src="screenshot/GPU_Predict_CN.png" width="600" alt="PRED 预测面板" />
+<img src="screenshot/GPU_Predict_EN.png" width="600" alt="PRED Panel" />
 
-**胶囊显示：**
+**Capsule display:**
 
 ```
-模型体量: 9.80G / 8.2G  |  状态: 预警  |  预测工作流执行成功率: 74%
+Model Load: 9.80G / 8.2G  |  Status: Warning  |  Predicted Success Rate: 74%
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `模型体量` | 当前工作流所有活跃模型的磁盘文件大小总量 |
-| `/` 后的数值 | 可用显存上限（空闲显存 + PyTorch 缓存）× 0.9 碎片折扣 |
-| `状态` | 轻松 / 安全 / 预警 / 危险，对应绿→黄→红颜色 |
-| `预测成功率` | 硬约束 × 软约束的综合概率，详见 [PRED 详解](#工作流显存预测pred详解) |
+| Field | Description |
+|-------|-------------|
+| `Model Load` | Total disk size of all active models in the workflow |
+| Value after `/` | Effective VRAM ceiling = (free VRAM + PyTorch cache) × 0.9 fragmentation discount |
+| `Status` | Easy / Safe / Warning / Critical, mapped to green → yellow → red |
+| `Success Rate` | Combined probability of hard × soft constraints. See [PRED Deep Dive](#workflow-vram-predictor-pred-deep-dive) |
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 显存上限 | 实际可分配给模型的有效显存（已扣碎片折扣） |
-| 峰值模型 | 工作流中单个最大模型的文件大小 |
-| 显存缺口 | 峰值模型超出有效显存的量（> 0 时有 OOM 风险） |
-| 显存压力 | 硬约束分项概率 P_peak |
-| 模型总量 | 所有活跃模型的总大小 |
-| 负载缺口 | 模型总量超出显存后需要内存中转的量 |
-| 可用内存 | OS 当前真实空闲物理内存 |
-| 可用虚拟内存 | Windows 提交限制中尚未使用的部分（分页文件） |
-| 负载压力 | 软约束分项概率 P_load |
-| 预测成功率 | P_peak × P_load 最终结果 |
-| 模型列表 | 按大小降序列出工作流中所有活跃模型文件名及大小 |
+| Metric | Description |
+|--------|-------------|
+| VRAM Ceiling | Effective VRAM available for models (after fragmentation discount) |
+| Peak Model | Size of the single largest model in the workflow |
+| VRAM Gap | Amount by which the peak model exceeds available VRAM (> 0 = OOM risk) |
+| VRAM Pressure | Hard constraint probability P_peak |
+| Total Model Size | Sum of all active models |
+| Load Gap | Amount that total models exceed VRAM, requiring RAM relay |
+| Free RAM | True free physical memory reported by OS |
+| Free Virtual Memory | Unused portion of Windows commit limit (page file) |
+| Load Pressure | Soft constraint probability P_load |
+| Success Rate | Final result: P_peak × P_load |
+| Model List | All active model filenames sorted by size descending |
 
 ---
 
-### 🖥️ CPU — 处理器
+### 🖥️ CPU — Processor
 
-<img src="screenshot/CPU_CN.png" width="400" alt="CPU 面板" />
+<img src="screenshot/CPU_EN.png" width="400" alt="CPU Panel" />
 
-
-**胶囊显示：**
+**Capsule display:**
 
 ```
 CPU 23.5% @ 4.80GHz
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `占用率` | 所有核心的综合负载百分比 |
-| `@ 频率` | 当前实时主频（GHz） |
+| Field | Description |
+|-------|-------------|
+| `Usage` | Aggregate load across all cores |
+| `@ Frequency` | Current real-time clock speed (GHz) |
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 占用率 | CPU 综合使用率（%） |
-| 型号 | 处理器完整型号名称（注册表读取） |
-| 频率 | 实时主频（GHz） |
-| 线程数 | 逻辑处理器总数 |
+| Metric | Description |
+|--------|-------------|
+| Usage | Overall CPU utilization (%) |
+| Model | Full processor name (read from registry) |
+| Frequency | Real-time clock speed (GHz) |
+| Threads | Total logical processor count |
 
-> 数据来源：`psutil.cpu_percent` / `wmic CurrentClockSpeed` / 注册表 `ProcessorNameString`
+> Data source: `psutil.cpu_percent` / `wmic CurrentClockSpeed` / registry `ProcessorNameString`
 
 ---
 
-### 💾 RAM — 系统内存
+### 💾 RAM — System Memory
 
-<img src="screenshot/RAM_CN.png" width="300" alt="RAM 面板" />
+<img src="screenshot/RAM_EN.png" width="300" alt="RAM Panel" />
 
-**胶囊显示：**
+**Capsule display:**
 
 ```
 RAM 61.3%
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `占用率` | 物理内存当前使用百分比 |
+| Field | Description |
+|-------|-------------|
+| `Usage` | Current physical memory usage percentage |
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 总量 | 物理内存总量（GB） |
-| 已用 | 当前已使用量（GB） |
-| 空闲 | 当前真实空闲量（GB） |
-| 虚拟内存 | Windows 已提交 / 提交上限（GB），紫色标注；PRED 预测的"最后防线" |
+| Metric | Description |
+|--------|-------------|
+| Total | Total physical memory (GB) |
+| Used | Currently used amount (GB) |
+| Free | True free physical memory (GB) |
+| Virtual Memory | Windows committed / commit limit (GB), shown in purple; the "last resort" for PRED predictions |
 
-> 数据来源：`psutil.virtual_memory` / `GlobalMemoryStatusEx`
+> Data source: `psutil.virtual_memory` / `GlobalMemoryStatusEx`
 
 ---
 
-### 📊 GPU — 引擎状态
+### 📊 GPU — Engine Status
 
-GPU 综合组的第一格，监控 GPU 计算核心的运行状态。
+First capsule in the GPU group. Monitors the GPU compute engine.
 
-<img src="screenshot/GPU_Engine_CN.png" width="400" alt="GPU 引擎面板" />
+<img src="screenshot/GPU_Engine_EN.png" width="400" alt="GPU Engine Panel" />
 
-
-**胶囊显示：**
+**Capsule display:**
 
 ```
 GPU 87.2% @ 2450MHz | 62°C
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `负载 %` | GPU 计算引擎占用率 |
-| `@ 频率` | GPU 核心当前运行频率（MHz） |
-| `\| 温度` | GPU 核心温度（°C），需管理员权限（Intel Arc） |
+| Field | Description |
+|-------|-------------|
+| `Load %` | GPU compute engine utilization |
+| `@ Frequency` | Current GPU core clock speed (MHz) |
+| `\| Temperature` | GPU core temperature (°C); requires admin on Intel Arc |
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 负载 | 引擎使用率（%） |
-| 频率 | 当前核心频率（MHz） |
-| 温度 | 核心温度（°C），> 85°C 红色，> 70°C 黄色 |
+| Metric | Description |
+|--------|-------------|
+| Load | Engine utilization (%) |
+| Frequency | Current core clock (MHz) |
+| Temperature | Core temperature (°C); red > 85°C, yellow > 70°C |
 
-> 数据来源（Intel Arc）：`zesEngineGetActivity` / `zesFrequencyGetState` / `zesTemperatureGetState`
+> Data source (Intel Arc): `zesEngineGetActivity` / `zesFrequencyGetState` / `zesTemperatureGetState`
 
 ---
 
-### 🧠 VRAM — 显存占用
+### 🧠 VRAM — Video Memory
 
-GPU 综合组的第二格，展示驱动层面的显存使用情况。
+Second capsule in the GPU group. Shows driver-level VRAM usage.
 
-<img src="screenshot/GPU_VRAM_CN.png" width="600" alt="GPU VRAM 面板" />
+<img src="screenshot/GPU_VRAM_EN.png" width="600" alt="VRAM Panel" />
 
-**胶囊显示：**
+**Capsule display:**
 
 ```
 VRAM 9.8 / 12.0 GB
 ```
 
-| 字段 | 说明 |
-|------|------|
-| 左侧数值 | 驱动层当前已占用显存（GB） |
-| 右侧数值 | 显卡总显存容量（GB） |
+| Field | Description |
+|-------|-------------|
+| Left value | Driver-reported VRAM currently in use (GB) |
+| Right value | Total VRAM capacity (GB) |
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 总量 | 显卡物理显存（GB） |
-| 当前占用 | 驱动报告的已占用总量 |
-| 　系统与环境 | 系统显示、驱动等固定开销（灰色），ComfyUI 无法控制 |
-| 　模型与计算 | PyTorch 当前加载的模型 + 实时张量（青色） |
-| 　预留缓冲区 | PyTorch 预先霸占的待分配空间（紫色），下次分配时优先复用 |
-| 空闲 | 当前真正可用的空闲显存（GB） |
+| Metric | Description |
+|--------|-------------|
+| Total | Physical VRAM on the GPU (GB) |
+| In Use | Total driver-reported usage |
+| 　System & Environment | Fixed overhead: display, driver, OS (gray) — outside ComfyUI's control |
+| 　Models & Compute | PyTorch loaded models + live tensors (cyan) |
+| 　Reserved Buffer | Pre-allocated PyTorch pool awaiting reuse (purple) |
+| Free | Truly available VRAM right now (GB) |
 
-> 数据来源：`zesMemoryGetState` / `torch.xpu.memory_allocated` / `torch.xpu.memory_reserved`
+> Data source: `zesMemoryGetState` / `torch.xpu.memory_allocated` / `torch.xpu.memory_reserved`
 
 ---
 
-### 🗂️ RSV — PyTorch 缓存池
+### 🗂️ RSV — PyTorch Cache Pool
 
-GPU 综合组的第三格，单独展示 PyTorch 的显存预留总量。
+Third capsule in the GPU group. Shows PyTorch's total reserved VRAM.
 
-<img src="screenshot/GPU_PytorchCache_CN.png" width="300" alt="缓存面板" />
+<img src="screenshot/GPU_PytorchCache_EN.png" width="300" alt="RSV Cache Panel" />
 
-**胶囊显示：**
+**Capsule display:**
 
 ```
 RSV 2.1 GB
 ```
 
-| 字段 | 说明 |
-|------|------|
-| 数值 | `torch.xpu/cuda.memory_reserved()` 的值（GB） |
+| Field | Description |
+|-------|-------------|
+| Value | `torch.xpu/cuda.memory_reserved()` in GB |
 
-> RSV ≈ 模型占用 + 预留缓冲区之和。归零说明 ComfyUI 已清空缓存，此时显存最为"干净"。
+> RSV ≈ models in use + reserved buffer. When it drops to zero, ComfyUI has fully cleared its cache — VRAM is at its cleanest.
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 缓存总量 | PyTorch 持有的显存池总大小（MB） |
-| 　实际占用 | 当前正在使用的部分（MB），青色 |
-| 　空闲缓存 | 已申请但暂时闲置、等待复用的部分（MB），灰色 |
+| Metric | Description |
+|--------|-------------|
+| Cache Total | Total VRAM pool held by PyTorch (MB) |
+| 　Active | Currently in-use portion (MB), cyan |
+| 　Idle Cache | Allocated but idle, waiting for reuse (MB), gray |
 
-> 数据来源：`torch.xpu.memory_reserved()`
+> Data source: `torch.xpu.memory_reserved()`
 
 ---
 
-### ⚡ PWR — 实时功耗
+### ⚡ PWR — Power Draw
 
-GPU 综合组的第四格，展示 GPU 瞬时功耗及 TGP 负载比例。
+Fourth capsule in the GPU group. Shows instantaneous GPU power and TGP load ratio.
 
-<img src="screenshot/Power_CN.png" width="400" alt="PWR 功耗面板" />
+<img src="screenshot/Power_EN.png" width="400" alt="PWR Panel" />
 
-**胶囊显示：**
+**Capsule display:**
 
 ```
 PWR 142W  75%
 ```
 
-| 字段 | 说明 |
-|------|------|
-| 功耗 | 当前瞬时功耗（W），双采样能量差值计算 |
-| 负载比例 | 当前功耗 / 规格 TGP，反映 GPU 压力程度 |
+| Field | Description |
+|-------|-------------|
+| Power | Current instantaneous wattage (dual-sample energy delta) |
+| Load ratio | Current power / rated TGP — reflects GPU stress level |
 
-> **Intel Arc 用户注意**：功耗数据需要管理员权限。普通模式下胶囊显示 `PWR N/A 🔒`，点击锁图标可查看提升权限的说明。
+> **Intel Arc users**: Power data requires administrator privileges. Without them, the capsule shows `PWR N/A 🔒`. Click the lock icon for instructions on how to elevate permissions.
 
-**悬停面板指标：**
+**Hover panel metrics:**
 
-| 指标 | 说明 |
-|------|------|
-| 瞬时功率 | 当前帧功耗（W） |
-| TGP 上限 | 该型号的规格设计功耗（W），来自内置 PCI ID 表 |
-| 负载比例 | 功耗 / TGP（%），> 95% 红色，> 80% 紫色 |
+| Metric | Description |
+|--------|-------------|
+| Instant Power | Current frame power draw (W) |
+| TGP Limit | Rated TDP for this GPU model (W), from built-in PCI ID table |
+| Load Ratio | Power / TGP (%); red > 95%, purple > 80% |
 
-> 数据来源（Intel Arc）：`zesPowerGetEnergyCounter`（需管理员）· 双采样差值法
-
----
-
-### 🌐 跨平台支持
-
-- **Intel Arc (XPU)** — 基于 Level Zero Sysman，完整支持功耗、频率、温度监控
-- **NVIDIA (CUDA)** — 基于 pynvml，完整支持
-- **AMD (ROCm)** — 计划中
+> Data source (Intel Arc): `zesPowerGetEnergyCounter` (requires admin) · dual-sample delta method
 
 ---
 
-## 工作流显存预测（PRED）详解
+### 🌐 Platform Support
 
-### 它在预测什么？
+- **Intel Arc (XPU)** — via Level Zero Sysman; full support for power, frequency, and temperature
+- **NVIDIA (CUDA)** — via pynvml; full support
+- **AMD (ROCm)** — planned
 
-在你点击运行之前，插件会悄悄估算一件事：
+---
 
-> **"以当前机器的状态，这个工作流大概有多大概率能跑完，而不是中途崩溃？"**
+## Workflow VRAM Predictor (PRED) Deep Dive
 
-这个概率就是状态栏 `PRED` 胶囊显示的数值。跑 AI 图像生成最常见的崩溃原因只有一个——**显存（VRAM）不够用**。但"不够用"并不是非黑即白，系统还可以借用内存、虚拟内存来凑，所以成功率是一个连续的概率，而不是简单的"能/不能"。
+### What is it predicting?
 
-### 核心洞察：模型不需要同时在显存里
+Before you click Run, the plugin quietly estimates one thing:
 
-ComfyUI 工作流是**串行**执行的——CLIP 编码、扩散采样、VAE 解码，一个用完就卸载，下一个再加载。  
-因此，判断"能不能跑"的真正规则只有两条：
+> **"Given the current state of this machine, how likely is this workflow to complete without crashing?"**
 
-1. **最大的单个模型能否装入显存**（硬约束，决定生死）
-2. **所有模型总量能否在内存中循环中转**（软约束，决定稳定性）
+That probability is what the `PRED` capsule shows. The most common reason AI image generation crashes is simple — **not enough VRAM**. But "not enough" isn't binary: the system can borrow from RAM and virtual memory to compensate, so success probability is a continuous value, not a yes/no.
 
-### 两个约束如何影响成功率
+### Core Insight: Models Don't Need to Be in VRAM Simultaneously
 
-**硬约束 — 最大模型 vs 可用显存**
+ComfyUI workflows run **serially** — CLIP encoding, diffusion sampling, VAE decoding each load, run, and unload one at a time.  
+So the real rules for "can this run?" come down to just two constraints:
+
+1. **Can the largest single model fit in VRAM?** (Hard constraint — determines survival)
+2. **Can all models relay through RAM?** (Soft constraint — determines stability)
+
+### How Each Constraint Affects Success Rate
+
+**Hard Constraint — Peak Model vs Available VRAM**
 
 ```
-可用显存 = （空闲显存 + PyTorch 缓存）× 0.9
+Available VRAM = (Free VRAM + PyTorch Cache) × 0.9
 ```
 
-乘以 `0.9` 是对显存碎片化损耗的折扣。溢出越多，成功率下降越陡：
+The `0.9` discount accounts for VRAM fragmentation. The more overflow, the steeper the drop:
 
-| 溢出比例 | 参考成功率 |
-|---------|-----------|
-| 0%（刚好装入） | 100% |
+| Overflow | Reference Success Rate |
+|----------|----------------------|
+| 0% (just fits) | 100% |
 | 10% | ~74% |
 | 30% | ~41% |
 | 50% | ~22% |
 | 100% | ~5% |
 
-**软约束 — 总量 vs 内存 / 虚拟内存**
+**Soft Constraint — Total Model Size vs RAM / Virtual Memory**
 
-| 情况 | 成功率区间 |
-|------|-----------|
-| 全部模型可常驻显存 | 100% |
-| 超出显存，但空闲内存够中转 | 70%～100% |
-| 内存也不够，需要虚拟内存（硬盘分页） | 5%～70% |
-| 连虚拟内存都不够 | ~0% |
+| Scenario | Success Rate Range |
+|----------|--------------------|
+| All models fit in VRAM | 100% |
+| Exceeds VRAM, but free RAM can relay | 70%–100% |
+| RAM also insufficient, needs virtual memory (disk paging) | 5%–70% |
+| Even virtual memory is exhausted | ~0% |
 
-**最终成功率 = 硬约束成功率 × 软约束成功率**
+**Final Success Rate = Hard Constraint Rate × Soft Constraint Rate**
 
-> 关键结论：只要最大模型装不进显存，无论内存多大，整体成功率都会被大幅拉低。
+> Key takeaway: If the largest model can't fit in VRAM, overall success rate will be severely dragged down regardless of how much RAM you have.
 
-### 颜色信号与建议操作
+### Color Signals and Recommended Actions
 
-| PRED 显示 | 含义 | 建议 |
-|-----------|------|------|
-| 🟢 ≥ 80% | 安全 | 直接运行 |
-| 🟡 40%～80% | 预警 | 关闭大内存程序，或降低模型精度 |
-| 🔴 < 40% | 危险 | 减少工作流模型数量，或换更小的模型 |
+| PRED Display | Meaning | Recommendation |
+|-------------|---------|----------------|
+| 🟢 ≥ 80% | Safe | Run freely |
+| 🟡 40%–80% | Warning | Close memory-heavy apps, or reduce model precision |
+| 🔴 < 40% | Danger | Reduce model count in workflow, or switch to smaller models |
 
-### 降低内存压力的实用技巧
+### Practical Tips to Reduce Memory Pressure
 
-- 用**量化模型**（GGUF Q4/Q8）替代 FP16，显存占用可减少 50%～75%
-- 将工作流中暂时不用的节点设为 **bypass**（算法自动排除，不计入预测）
-- 运行前关闭浏览器、游戏等大内存程序
-- 遇到 OOM 后**重启 ComfyUI** 可清理显存碎片，有时能让同一工作流跑通
-- 如果使用多个 LoRA，考虑提前合并成单个文件
+- Replace FP16 models with **quantized models** (GGUF Q4/Q8) — cuts VRAM usage by 50–75%
+- Set unused nodes to **bypass** — the predictor automatically excludes them
+- Close browsers, games, and other memory-heavy apps before running
+- After an OOM crash, **restart ComfyUI** to clear VRAM fragmentation — the same workflow may succeed afterward
+- If using multiple LoRAs, consider merging them into a single file in advance
 
-> **注意**：算法使用模型的磁盘文件大小估算显存占用。对于量化模型（GGUF），实际占用远小于估算值，真实成功率会比显示的高——这是有意为之的保守估计，偏差方向对用户安全。
+> **Note**: The algorithm estimates VRAM usage from model disk file sizes. For quantized models (GGUF), actual VRAM usage is much lower than the estimate — so the true success rate will be higher than displayed. This is intentional conservative estimation; the bias direction is safe for users.
 
 ---
 
-## 安装
+## Installation
 
-### 方式一：ComfyUI Manager（推荐）
-在 ComfyUI Manager 中搜索 `XPUSYS Monitor` 一键安装。
+### Option 1: ComfyUI Manager (Recommended)
+Search for `XPUSYS Monitor` in ComfyUI Manager and install with one click.
 
-### 方式二：手动安装
+### Option 2: Manual Installation
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor
@@ -340,45 +338,45 @@ pip install -r requirements.txt
 
 ---
 
-## 依赖
+## Dependencies
 
-| 包 | 用途 |
-|----|------|
-| `psutil` | CPU / 内存监控（必须） |
-| `pynvml` | NVIDIA GPU 监控（非 NVIDIA 环境可忽略） |
+| Package | Purpose |
+|---------|---------|
+| `psutil` | CPU / memory monitoring (required) |
+| `pynvml` | NVIDIA GPU monitoring (optional for non-NVIDIA setups) |
 
-> **注意**：`torch` 和 `aiohttp` 由 ComfyUI 自身提供，无需单独安装。
+> **Note**: `torch` and `aiohttp` are provided by ComfyUI itself — no separate installation needed.
 
 ---
 
-## 权限说明（Intel Arc 用户必读）
+## Permissions (Intel Arc Users — Important)
 
-Intel Arc (XPU) 的底层接口 **Level Zero Sysman** 在 Windows 上需要管理员权限才能读取功耗、温度等 Sysman 数据。  
-**建议所有 Intel Arc 用户以管理员身份启动 ComfyUI**，否则以下功能将不可用：
+Intel Arc (XPU) uses **Level Zero Sysman** as its backend. On Windows, Sysman requires administrator privileges to read power, temperature, and other hardware data.  
+**All Intel Arc users are strongly recommended to launch ComfyUI as Administrator**, otherwise the following features will be unavailable:
 
-| 功能 | 普通权限 | 管理员权限 |
-|------|---------|-----------|
-| GPU 负载 / 频率 | ✅ | ✅ |
-| 温度监控 | ❌ | ✅ |
-| 功耗监控（PWR） | ❌ | ✅ |
-| 显存预测（PRED） | ✅ | ✅ |
-| CPU / RAM 监控 | ✅ | ✅ |
+| Feature | Normal | Admin |
+|---------|--------|-------|
+| GPU Load / Frequency | ✅ | ✅ |
+| Temperature | ❌ | ✅ |
+| Power (PWR) | ❌ | ✅ |
+| VRAM Predictor (PRED) | ✅ | ✅ |
+| CPU / RAM Monitoring | ✅ | ✅ |
 
-> NVIDIA / AMD 用户无此限制，以普通权限运行即可获得完整数据。
+> NVIDIA / AMD users are not affected — full data is available without elevated privileges.
 
-### 获取管理员权限的两种方式
+### Two Ways to Run as Administrator
 
-#### 方式一：鼠标右键启动（临时使用）
+#### Option 1: Right-Click (Quick & Temporary)
 
-1. 找到你的 ComfyUI 启动脚本（如 `run_nvidia_gpu.bat` 或 `Stable_Start_IntelARC.bat`）
-2. **右键点击** → 选择 **"以管理员身份运行"**
-3. 在弹出的 UAC 确认窗口中点击 **"是"**
+1. Locate your ComfyUI launch script (e.g. `run_nvidia_gpu.bat` or `Stable_Start_IntelARC.bat`)
+2. **Right-click** → select **"Run as administrator"**
+3. Click **"Yes"** in the UAC prompt
 
-> 此方式每次启动都需要手动操作，适合偶尔使用或测试场景。
+> This requires manual action every time. Best for occasional use or testing.
 
-#### 方式二：启动脚本内嵌权限自动提升（推荐）
+#### Option 2: Embed Auto-Elevation in Your Launch Script (Recommended)
 
-在你的 `.bat` 启动脚本**最顶部**加入以下代码块，脚本将在检测到非管理员权限时，**自动关闭当前窗口并以管理员身份重新启动**，无需每次手动右键：
+Add the following block to the **very top** of your `.bat` script. It detects non-admin context, closes the current window, and relaunches itself elevated automatically:
 
 ```bat
 :check_admin
@@ -386,25 +384,22 @@ net session >nul 2>&1
 if %errorLevel% == 0 (
     goto :admin_start
 ) else (
-    echo [权限检查] 正在请求管理员权限并关闭当前窗口...
-    :: 启动新窗口（管理员）
+    echo [Permission Check] Requesting administrator privileges...
     powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    :: 强制关闭当前的非管理员窗口
     exit
 )
 
 :admin_start
-:: 只有管理员窗口能看到这里
 cd /d "%~dp0"
-echo [成功] 权限已提升，开始配置运行环境...
+echo [OK] Privileges elevated. Starting ComfyUI...
 ```
 
-**使用说明：**
-- 将上述代码块粘贴到 `.bat` 文件的第一行（`@echo off` 之后）
-- `:admin_start` 标签之后接原本的启动逻辑（如激活 conda 环境、设置环境变量、启动 `main.py` 等）
-- 首次运行会弹出 UAC 窗口，点击"是"即可；之后权限提升后的窗口将**自动继续执行**，无需额外操作
+**Usage notes:**
+- Paste this block after `@echo off` at the top of your `.bat` file
+- Put your original launch logic after `:admin_start`
+- The first run will show a UAC prompt — click "Yes". The elevated window then continues automatically.
 
-**完整示例结构：**
+**Full example structure:**
 
 ```bat
 @echo off
@@ -415,56 +410,53 @@ net session >nul 2>&1
 if %errorLevel% == 0 (
     goto :admin_start
 ) else (
-    echo [权限检查] 正在请求管理员权限...
+    echo [Permission Check] Requesting administrator privileges...
     powershell -Command "Start-Process '%~f0' -Verb RunAs"
     exit
 )
 
 :admin_start
 cd /d "%~dp0"
-echo [成功] 权限已提升，开始启动 ComfyUI...
+echo [OK] Privileges elevated. Starting ComfyUI...
 
-:: ↓ 在此处添加你原有的启动命令 ↓
-:: 例如：call conda activate comfyui
-:: 例如：python main.py --listen 0.0.0.0
+:: ↓ Add your original launch commands below ↓
+:: e.g.: call conda activate comfyui
+:: e.g.: python main.py --listen 0.0.0.0
 ```
 
 ---
 
-## 设置项
+## Settings
 
-在 ComfyUI 设置页的 **XPUSYS_Mon** 分组中可调整：
+Adjustable in the **XPUSYS_Mon** section of ComfyUI's settings page:
 
-- **刷新间隔**：数据更新频率（200–5000 ms，默认 1000 ms）
-- **字体大小**：状态栏字号（12–22 px，默认 16 px）
-- **界面语言**：中文 / English / 跟随系统
-- 各胶囊的**显示 / 隐藏**开关
+- **Refresh Interval**: Data update frequency (200–5000 ms, default 1000 ms)
+- **Font Size**: Status bar text size (12–22 px, default 16 px)
+- **Language**: Chinese / English / Follow System
+- Per-capsule **show / hide** toggles
 
 ---
 
-## 系统要求
+## System Requirements
 
-- ComfyUI（任意最新版本）
+- ComfyUI (any recent version)
 - Python 3.10+
-- PyTorch 2.5+（Intel XPU 需使用 XPU 版构建）
-- Windows（当前主要测试环境）；Linux 理论兼容，欢迎反馈
+- PyTorch 2.5+ (XPU build required for Intel Arc)
+- Windows (primary test environment); Linux theoretically compatible — feedback welcome
 
 ---
 
-## 许可证
+## License
 
 [MIT License](LICENSE)
 
 ---
 
-## 致谢
+## Acknowledgements
 
-感谢以下朋友让这个项目走得更远：
+Thanks to everyone who helped this project go further:
 
-- **Intel Arc 用户们** — 你们是这个项目最初的动力来源。作为"少数派"，你们的坚持和反馈让我们看到了继续做下去的价值。
-- **NVIDIA 用户们** — 感谢协助验证 CUDA 路径的兼容性，让插件不止步于 XPU 生态。
-- **AMD 用户们** — 感谢关注与期待，ROCm 支持正在推进中，你们的耐心是最大的鼓励。
-- **参与内测的朋友们** — 感谢你们在早期版本中投入时间反复测试、提交问题、给出改进建议，没有你们就没有现在的稳定性。
-
-
-
+- **Intel Arc users** — You are the original motivation behind this project. As the "minority", your persistence and feedback showed us it was worth continuing.
+- **NVIDIA users** — Thanks for helping validate CUDA path compatibility and keeping the plugin from being XPU-only.
+- **AMD users** — Thanks for your interest and patience. ROCm support is in progress.
+- **Beta testers** — Thanks for investing your time in early versions: testing, filing issues, and suggesting improvements. The stability we have today wouldn't exist without you.
