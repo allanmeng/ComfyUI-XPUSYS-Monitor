@@ -282,13 +282,14 @@ Available VRAM = (Free VRAM + PyTorch Cache) × 0.9
 
 The `0.9` discount accounts for VRAM fragmentation. The more overflow, the steeper the drop:
 
-| Overflow | Reference Success Rate |
-|----------|----------------------|
-| 0% (just fits) | 100% |
-| 10% | ~74% |
-| 30% | ~41% |
-| 50% | ~22% |
-| 100% | ~5% |
+| Overflow | Intel Arc | NVIDIA (with UVM) |
+|----------|-----------|-------------------|
+| 0% (just fits) | 100% | 100% |
+| 100% (2× VRAM) | ~5% | ~47% |
+| 200% (3× VRAM) | ~0% | ~22% |
+| 300% (4× VRAM) | ~0% | ~5% |
+
+**Platform Differences:** NVIDIA's CUDA Unified Memory (UVM) allows models to page between VRAM and system RAM automatically. This means NVIDIA GPUs can successfully run workflows that exceed physical VRAM by up to ~4× (depending on PCIe bandwidth and system RAM speed), while Intel Arc has stricter limits.
 
 **Soft Constraint — Total Model Size vs RAM / Virtual Memory**
 

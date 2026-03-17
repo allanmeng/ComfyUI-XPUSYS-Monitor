@@ -117,6 +117,28 @@ This risk is modeled with an **exponential decay curve** — the more overflow, 
 
 Why exponential and not linear? Because VRAM overflow danger **accelerates** — a small overage may be absorbed by driver-level buffers, but a large overage has nothing left to save it.
 
+#### Platform Differences: NVIDIA's "Overflow Tolerance"
+
+The curve above applies to **Intel Arc**'s strict standard. For **NVIDIA** GPUs, the situation is quite different:
+
+| Platform | Overflow Tolerance Factor | Actual Capability |
+|----------|--------------------------|-------------------|
+| Intel Arc | 1.0x | Strict hard constraint; exceeding VRAM often crashes |
+| NVIDIA | 4.0x | CUDA UVM supports running with ~4x VRAM overflow |
+
+**Why can NVIDIA run beyond VRAM?**
+
+NVIDIA's CUDA driver has a **Unified Virtual Memory (UVM)** mechanism:
+- Models don't need to stay fully resident in VRAM
+- Driver automatically pages between VRAM and system RAM
+- Slower, but the program won't crash
+
+This means for the same 8 GB VRAM running a 20 GB model:
+- **Intel Arc**: Success rate ≈ 5% (almost certain to crash)
+- **NVIDIA**: Success rate ≈ 47% (runs, just slower)
+
+The plugin automatically detects GPU type and applies the appropriate overflow tolerance factor.
+
 ---
 
 ### Constraint 2: Soft Constraint — Can All Models Cycle Through Memory?
