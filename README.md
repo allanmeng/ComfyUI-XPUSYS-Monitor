@@ -57,6 +57,7 @@ Model Load: 9.80G / 8.2G  |  Status: Warning  |  Predicted Success Rate: 74%
 | VRAM Ceiling | Effective VRAM available for models (after fragmentation discount) |
 | Peak Model | Size of the single largest model in the workflow |
 | VRAM Gap | Amount by which the peak model exceeds available VRAM (> 0 = OOM risk) |
+| Overflow Tolerance | Platform-specific coefficient (Intel: 1.0x, NVIDIA: 4.0x) reflecting GPU memory architecture |
 | VRAM Pressure | Hard constraint probability P_peak |
 | Total Model Size | Sum of all active models |
 | Load Gap | Amount that total models exceed VRAM, requiring RAM relay |
