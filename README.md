@@ -321,6 +321,8 @@ The `0.9` discount accounts for VRAM fragmentation. The more overflow, the steep
 
 > **Note**: The algorithm estimates VRAM usage from model disk file sizes. For quantized models (GGUF), actual VRAM usage is much lower than the estimate — so the true success rate will be higher than displayed. This is intentional conservative estimation; the bias direction is safe for users.
 
+📖 **Want a full plain-language explanation?** → [Predictor Deep Dive (EN)](docs/predictor_explained_EN.md)
+
 ---
 
 ## Installation
