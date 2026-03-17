@@ -15,3 +15,12 @@ build/
 # OS
 Thumbs.db
 .DS_Store
+
+# 内部调试 / 探索脚本（不发布）
+check_igcl_power.py
+check_pdh_power.py
+mdapi_explore.py
+
+# 内部技术文档（不发布）
+predictor_algorithm.md
+predictor_explained.md
