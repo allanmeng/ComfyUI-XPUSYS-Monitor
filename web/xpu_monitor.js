@@ -1021,26 +1021,44 @@ async function _doPredictorFetch() {
   const nodes = app.graph?._nodes;
   if (!nodes) return;
 
-  const activeModels = [];
+  // 后端支持的模型文件后缀
+  const ALLOWED_EXTS = [".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".onnx"];
+
+  // 按模型文件名去重的 Map
+  const uniqueModels = new Map();
+
   nodes.forEach(node => {
     if (node.mode !== 0) return;                      // skip bypassed / muted
     const nodeType = node.type?.toLowerCase() || "";
-    const modelWidget = node.widgets?.find(w =>
-      (w.type === "combo" || w.name?.toLowerCase().includes("name")) &&
-      typeof w.value === "string" &&
-      (w.value.includes(".") || nodeType.includes("loader"))
-    );
-    if (!modelWidget?.value) return;
 
-    let hint = "checkpoints";
-    const wn = modelWidget.name?.toLowerCase() || "";
-    if (nodeType.includes("vae")        || wn.includes("vae"))        hint = "vae";
-    else if (nodeType.includes("lora")  || wn.includes("lora"))       hint = "loras";
-    else if (nodeType.includes("control")|| wn.includes("control"))   hint = "controlnet";
-    else if (nodeType.includes("clip")  || wn.includes("clip"))       hint = "clip";
-    else if (nodeType.includes("unet")  || wn.includes("unet"))       hint = "unet";
-    activeModels.push({ type: hint, name: modelWidget.value });
+    // 遍历所有 widget，查找符合后缀的模型文件
+    node.widgets?.forEach(w => {
+      if (typeof w.value !== "string") return;
+      const value = w.value.trim();
+      if (!value) return;
+
+      // 检查是否为已登记后缀的模型文件
+      const ext = value.substring(value.lastIndexOf(".")).toLowerCase();
+      if (!ALLOWED_EXTS.includes(ext)) return;
+
+      // 按文件名去重，只保留第一次出现的记录
+      if (!uniqueModels.has(value)) {
+        // 根据 widget 名称推断模型类型
+        const wn = w.name?.toLowerCase() || "";
+        let hint = "checkpoints";
+        if (nodeType.includes("vae") || wn.includes("vae"))            hint = "vae";
+        else if (nodeType.includes("lora") || wn.includes("lora"))     hint = "loras";
+        else if (nodeType.includes("control") || wn.includes("control")) hint = "controlnet";
+        else if (nodeType.includes("clip") || wn.includes("clip"))     hint = "clip";
+        else if (nodeType.includes("unet") || wn.includes("unet"))     hint = "unet";
+        else if (nodeType.includes("upscale") || wn.includes("upscale")) hint = "upscale_models";
+
+        uniqueModels.set(value, { type: hint, name: value });
+      }
+    });
   });
+
+  const activeModels = Array.from(uniqueModels.values());
 
   try {
     const r = await api.fetchApi("/xpusys/model_sizes", {
