@@ -997,16 +997,24 @@ function applyModelHook(node) {
 
   // 只对含模型 widget 的节点挂 bypass / 删除钩子
   if (hasModel && !node._xpusysNodeHooked) {
-    const origMode = node.onModeChange;
-    node.onModeChange = function () {
-      if (origMode) origMode.apply(this, arguments);
-      updatePredictor();
-    };
+    // 监听节点被移除
     const origRemoved = node.onRemoved;
     node.onRemoved = function () {
       if (origRemoved) origRemoved.apply(this, arguments);
       updatePredictor();
     };
+    // 使用 Object.defineProperty 监听 mode 属性变化
+    let _mode = node.mode;
+    Object.defineProperty(node, "mode", {
+      get: function() { return _mode; },
+      set: function(v) {
+        if (_mode !== v) {
+          _mode = v;
+          updatePredictor();
+        }
+      },
+      configurable: true
+    });
     node._xpusysNodeHooked = true;
   }
 }
@@ -1022,7 +1030,7 @@ async function _doPredictorFetch() {
   if (!nodes) return;
 
   // 后端支持的模型文件后缀
-  const ALLOWED_EXTS = [".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".onnx"];
+  const ALLOWED_EXTS = [".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".pkl"];
 
   // 按模型文件名去重的 Map
   const uniqueModels = new Map();
@@ -1280,6 +1288,8 @@ app.registerExtension({
   },
 
   async afterConfigureGraph() {
+    // 对所有节点应用 hook，然后更新预测
+    app.graph._nodes?.forEach(n => applyModelHook(n));
     updatePredictor();
   },
 });

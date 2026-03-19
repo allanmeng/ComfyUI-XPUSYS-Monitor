@@ -90,10 +90,11 @@ def register_routes(server):
         try:
             data  = await request.json()
             items = data.get("models", [])
-            _ALLOWED = {".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".onnx"}
+            _ALLOWED = {".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".pkl"}
             _SEARCH  = ["checkpoints", "vae", "loras", "controlnet", "clip",
                         "upscale_models", "unet", "diffusion_models",
-                        "ultralytics", "annotator", "bbox", "onnx"]
+                        "ultralytics", "annotator", "bbox", "onnx",
+                        "mmaudio", "audio", "rife", "vfi"]
             results = []
             for m in items:
                 name = m.get("name", "")
