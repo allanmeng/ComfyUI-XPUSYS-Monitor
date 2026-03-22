@@ -67,6 +67,8 @@ Model Load: 9.80G / 8.2G  |  Status: Warning  |  Predicted Success Rate: 74%
 | Success Rate | Final result: P_peak × P_load |
 | Model List | All active model filenames sorted by size descending |
 
+📖 **Want a full plain-language explanation?** → [Predictor Deep Dive (EN)](docs/predictor_explained_EN.md)
+
 ---
 
 ### 🖥️ CPU — Processor
