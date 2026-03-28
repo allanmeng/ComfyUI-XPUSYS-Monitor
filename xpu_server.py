@@ -98,18 +98,34 @@ def register_routes(server):
             results = []
             for m in items:
                 name = m.get("name", "")
+                model_path = m.get("path", "")  # 前端传来的完整相对路径（可能含子文件夹）
                 if not name:
                     continue
                 if os.path.splitext(name)[1].lower() not in _ALLOWED:
                     continue
-                hint = m.get("type", "checkpoints")
-                path = _fp.get_full_path(hint, name)
-                if not path:
-                    for folder in _SEARCH:
-                        p = _fp.get_full_path(folder, name)
-                        if p:
+                
+                # 在所有搜索目录中按优先级查找
+                path = None
+                for folder in _SEARCH:
+                    # 优先使用完整路径查找（支持子文件夹）
+                    if model_path:
+                        p = _fp.get_full_path(folder, model_path)
+                        if p and os.path.isfile(p):
                             path = p
                             break
+                
+                # 兜底：用文件名在所有目录下递归搜索
+                if not path:
+                    for folder in _SEARCH:
+                        base_folder = _fp.get_full_path(folder, "")
+                        if base_folder and os.path.isdir(base_folder):
+                            for root, _, files in os.walk(base_folder):
+                                if name in files:
+                                    path = os.path.join(root, name)
+                                    break
+                            if path:
+                                break
+                
                 if path and os.path.isfile(path):
                     size_gb = os.path.getsize(path) / (1024 ** 3)
                     if size_gb > 0.001:

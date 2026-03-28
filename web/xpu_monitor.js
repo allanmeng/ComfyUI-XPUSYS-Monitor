@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -1051,17 +1051,15 @@ async function _doPredictorFetch() {
 
       // 按文件名去重，只保留第一次出现的记录
       if (!uniqueModels.has(value)) {
-        // 根据 widget 名称推断模型类型
-        const wn = w.name?.toLowerCase() || "";
-        let hint = "checkpoints";
-        if (nodeType.includes("vae") || wn.includes("vae"))            hint = "vae";
-        else if (nodeType.includes("lora") || wn.includes("lora"))     hint = "loras";
-        else if (nodeType.includes("control") || wn.includes("control")) hint = "controlnet";
-        else if (nodeType.includes("clip") || wn.includes("clip"))     hint = "clip";
-        else if (nodeType.includes("unet") || wn.includes("unet"))     hint = "unet";
-        else if (nodeType.includes("upscale") || wn.includes("upscale")) hint = "upscale_models";
+        // value 可能包含子文件夹路径，如 "子文件夹/model.safetensors"
+        // 分离路径和文件名：path 用于查找，name 用于显示
+        const lastSlash = value.lastIndexOf("/");
+        const lastBackslash = value.lastIndexOf("\\");
+        const sepIndex = Math.max(lastSlash, lastBackslash);
+        const modelPath = value;  // 完整相对路径，用于后端查找
+        const modelName = sepIndex >= 0 ? value.substring(sepIndex + 1) : value;  // 纯文件名，用于显示
 
-        uniqueModels.set(value, { type: hint, name: value });
+        uniqueModels.set(value, { path: modelPath, name: modelName });
       }
     });
   });

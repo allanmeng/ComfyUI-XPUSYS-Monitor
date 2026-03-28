@@ -6,6 +6,20 @@
 
 ## English
 
+### v1.0.1 — 2026-03-28
+
+#### 🔧 Improvements
+
+- **Model detection**: Removed node-type-based inference; now uses path-based lookup across all model directories for better compatibility with custom loaders (GGUF, etc.)
+- **Subfolder support**: Models in subdirectories (e.g., `unet/subfolder/model.gguf`) are now correctly detected
+- **Performance**: Optimized model lookup with prioritized directory search and fallback recursion
+
+#### 🐛 Bug Fixes
+
+- Fixed model size detection for nodes like `GGUFLoaderKJ` that don't follow standard naming conventions
+
+---
+
 ### v1.0.0 — 2026-03-17
 
 First stable release.
@@ -46,6 +60,20 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.1 — 2026-03-28
+
+#### 🔧 改进
+
+- **模型检测**：移除基于节点类型的推断逻辑，改为基于路径在所有模型目录中查找，兼容更多自定义加载器（GGUF等）
+- **子文件夹支持**：正确检测子文件夹中的模型（如 `unet/子文件夹/model.gguf`）
+- **性能优化**：优化模型查找逻辑，采用优先级目录搜索 + 递归兜底策略
+
+#### 🐛 Bug 修复
+
+- 修复 `GGUFLoaderKJ` 等不遵循标准命名规范的节点的模型大小检测问题
+
+---
 
 ### v1.0.0 — 2026-03-17
 
