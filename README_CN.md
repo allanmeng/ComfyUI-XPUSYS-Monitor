@@ -6,7 +6,7 @@
 >
 > 在 ComfyUI 的生态中，Intel Arc (XPU) 用户或许是"少数派"，但这正是我们出发的理由。由于原生 XPU 监控插件的稀缺，我们立足当下，旨在为 Intel 显卡用户提供符合底层规范、稳定且极简的工具支持。
 >
-> 但我们并未止步于此——通过架构的通用化设计，这款插件已兼容 NVIDIA (CUDA) 平台并计划 AMD (ROCm) 平台的适配。
+> 但我们并未止步于此——通过架构的通用化设计，这款插件已完整支持 NVIDIA (CUDA) 和 AMD (ROCm) 平台。
 >
 > 无论你手持哪种硬件，都能通过它一眼洞悉系统脉搏。这是一款诞生于 XPU 社区、并向全平台开发者开放的工具，希望你喜欢。
 
@@ -14,7 +14,7 @@
 
 ## 简介
 
-**ComfyUI-XPUSYS-Monitor** 是一款以 Intel Arc 为核心的 ComfyUI 硬件监控插件，在顶部菜单栏以胶囊形式实时展示 GPU、CPU、内存等关键指标，并提供独家的**工作流执行成功率预测**功能，让你在点击运行前就能预判本次工作流能否顺利完成。同时完整支持 NVIDIA (CUDA) 平台。
+**ComfyUI-XPUSYS-Monitor** 是一款以 Intel Arc 为核心的 ComfyUI 硬件监控插件，在顶部菜单栏以胶囊形式实时展示 GPU、CPU、内存等关键指标，并提供独家的**工作流执行成功率预测**功能，让你在点击运行前就能预判本次工作流能否顺利完成。同时完整支持 NVIDIA (CUDA) 和 AMD (ROCm) 平台。
 
 ---
 
@@ -253,7 +253,7 @@ PWR 142W  75%
 
 - **Intel Arc (XPU)** — 基于 Level Zero Sysman，完整支持功耗、频率、温度监控
 - **NVIDIA (CUDA)** — 基于 pynvml，完整支持
-- **AMD (ROCm)** — 计划中
+- **AMD (ROCm)** — 基于 `rocm_smi`，完整支持显存、负载、温度、功耗。未安装 `rocm_smi_lib` 时自动降级为 `torch.cuda` 基础统计。可选安装：`pip install rocm_smi_lib`
 
 ---
 
@@ -350,6 +350,7 @@ pip install -r requirements.txt
 |----|------|
 | `psutil` | CPU / 内存监控（必须） |
 | `pynvml` | NVIDIA GPU 监控（非 NVIDIA 环境可忽略） |
+| `rocm_smi_lib` | AMD GPU 监控——仅 AMD ROCm 环境需要，可选安装：`pip install rocm_smi_lib` |
 
 > **注意**：`torch` 和 `aiohttp` 由 ComfyUI 自身提供，无需单独安装。
 
@@ -467,7 +468,7 @@ echo [成功] 权限已提升，开始启动 ComfyUI...
 
 - **Intel Arc 用户们** — 你们是这个项目最初的动力来源。作为"少数派"，你们的坚持和反馈让我们看到了继续做下去的价值。
 - **NVIDIA 用户们** — 感谢协助验证 CUDA 路径的兼容性，让插件不止步于 XPU 生态。
-- **AMD 用户们** — 感谢关注与期待，ROCm 支持正在推进中，你们的耐心是最大的鼓励。
+- **AMD 用户们** — 感谢耐心等待。ROCm 支持已在 v1.0.2 中正式上线。
 - **参与内测的朋友们** — 感谢你们在早期版本中投入时间反复测试、提交问题、给出改进建议，没有你们就没有现在的稳定性。
 
 

@@ -6,7 +6,7 @@
 >
 > In the ComfyUI ecosystem, Intel Arc (XPU) users may be in the "minority" — but that's exactly why we started. With a scarcity of native XPU monitoring plugins, we set out to build a stable, minimal tool that respects the underlying hardware specs for Intel GPU users.
 >
-> But we didn't stop there. Through a generalized architecture, this plugin now fully supports NVIDIA (CUDA) and has AMD (ROCm) support in the pipeline.
+> But we didn't stop there. Through a generalized architecture, this plugin now fully supports both NVIDIA (CUDA) and AMD (ROCm).
 >
 > No matter what GPU you're running, this plugin gives you a clear, at-a-glance view of your system's vitals. Born in the XPU community, open to all platforms — we hope you enjoy it.
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-**ComfyUI-XPUSYS-Monitor** is an Intel Arc-first ComfyUI hardware monitor that displays real-time GPU, CPU, and RAM stats as capsules in the top menu bar. It features an exclusive **Workflow Execution Success Rate Predictor** that estimates whether your workflow will complete successfully — before you even click Run. NVIDIA (CUDA) is fully supported.
+**ComfyUI-XPUSYS-Monitor** is an Intel Arc-first ComfyUI hardware monitor that displays real-time GPU, CPU, and RAM stats as capsules in the top menu bar. It features an exclusive **Workflow Execution Success Rate Predictor** that estimates whether your workflow will complete successfully — before you even click Run. NVIDIA (CUDA) and AMD (ROCm) are fully supported.
 
 ---
 
@@ -253,7 +253,7 @@ PWR 142W  75%
 
 - **Intel Arc (XPU)** — via Level Zero Sysman; full support for power, frequency, and temperature
 - **NVIDIA (CUDA)** — via pynvml; full support
-- **AMD (ROCm)** — planned
+- **AMD (ROCm)** — via `rocm_smi`; full support for VRAM, load, temperature, and power. Falls back to `torch.cuda` basic stats when `rocm_smi_lib` is not installed. Optional: `pip install rocm_smi_lib`
 
 ---
 
@@ -350,6 +350,7 @@ pip install -r requirements.txt
 |---------|---------|
 | `psutil` | CPU / memory monitoring (required) |
 | `pynvml` | NVIDIA GPU monitoring (optional for non-NVIDIA setups) |
+| `rocm_smi_lib` | AMD GPU monitoring — only needed on AMD ROCm systems; pip install rocm_smi_lib |
 
 > **Note**: `torch` and `aiohttp` are provided by ComfyUI itself — no separate installation needed.
 
@@ -464,5 +465,5 @@ Thanks to everyone who helped this project go further:
 
 - **Intel Arc users** — You are the original motivation behind this project. As the "minority", your persistence and feedback showed us it was worth continuing.
 - **NVIDIA users** — Thanks for helping validate CUDA path compatibility and keeping the plugin from being XPU-only.
-- **AMD users** — Thanks for your interest and patience. ROCm support is in progress.
+- **AMD users** — Thanks for your patience. ROCm support is now live in v1.0.2.
 - **Beta testers** — Thanks for investing your time in early versions: testing, filing issues, and suggesting improvements. The stability we have today wouldn't exist without you.
