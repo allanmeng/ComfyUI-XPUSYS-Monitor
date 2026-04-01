@@ -128,6 +128,12 @@ class AMDProvider(BaseGPUProvider):
                 return rocm_smi.getCardName(0)
             except Exception:
                 pass
+        if self._torch_ok:
+            try:
+                import torch
+                return torch.cuda.get_device_name(0)
+            except Exception:
+                pass
         return "AMD GPU"
 
     def _read_vram(self) -> Tuple[float, float, float]:
@@ -147,6 +153,17 @@ class AMDProvider(BaseGPUProvider):
                 )
             except Exception:
                 pass
+
+        # Fallback: torch.cuda (AMD PyTorch on Windows/Linux without rocm_smi)
+        if self._torch_ok:
+            try:
+                import torch
+                gb = 1024 ** 3
+                total = torch.cuda.get_device_properties(0).total_memory / gb
+                return 0.0, total, 0.0  # free/used unavailable without rocm_smi
+            except Exception:
+                pass
+
         return 0.0, 0.0, 0.0
 
     def _read_torch_stats(self) -> Tuple[float, float]:
