@@ -1,9 +1,13 @@
-# CPU / RAM monitoring — required by both IntelProvider and NvidiaProvider
+# CPU / RAM monitoring — required by all providers
 psutil
 
 # NVIDIA GPU monitoring — required by NvidiaProvider only
-# Safe to install on Intel machines; unused if no NVIDIA driver is present
+# Safe to install on Intel/AMD machines; unused if no NVIDIA driver is present
 pynvml
+
+# AMD GPU monitoring — required by AMDProvider only (ROCm)
+# Only needed when using AMD GPU with ROCm; safe to install on other systems
+# rocm_smi_lib
 
 # ---------------------------------------------------------------------------
 # The following are provided by ComfyUI itself — DO NOT add them here.

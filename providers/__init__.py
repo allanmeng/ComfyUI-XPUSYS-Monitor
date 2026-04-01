@@ -13,12 +13,12 @@ Detection strategy — align with ComfyUI's own device selection:
   device ComfyUI is actually running on.
 
 Detection order:
-  1. torch.cuda.is_available()  → NvidiaProvider   (same as ComfyUI)
-  2. torch.xpu.is_available()   → IntelProvider    (same as ComfyUI)
-  3. (future) AMD — amdsmi available
-  4. ze_loader.dll present      → IntelProvider    (fallback: non-torch envs)
-  5. pynvml available           → NvidiaProvider   (fallback: non-torch envs)
-  6. Last resort                → IntelProvider    (limited functionality)
+  1. torch.cuda.is_available() + torch.version.roc → AMDProvider   (ROCm)
+  2. torch.cuda.is_available()                    → NvidiaProvider (NVIDIA)
+  3. torch.xpu.is_available()                    → IntelProvider  (Intel Arc)
+  4. ze_loader.dll present                        → IntelProvider  (fallback)
+  5. pynvml available                             → NvidiaProvider (fallback)
+  6. Last resort                                 → IntelProvider  (limited)
 
 Fallback tiers 4-5 cover edge cases where torch is not yet imported or the
 user is running a non-standard environment without torch.
@@ -41,20 +41,22 @@ def auto_detect_provider(interval_ms: int = 1000) -> BaseGPUProvider:
 
     # --- Primary: follow torch (mirrors ComfyUI model_management.py) ---
     if _detect_nvidia_torch():
-        logger.info("XPUSYSMonitor: torch.cuda available — using NvidiaProvider.")
-        from .nvidia import NvidiaProvider
-        return NvidiaProvider(interval_ms=interval_ms)
+        # torch.cuda available — determine if NVIDIA or AMD via torch.version.roc
+        if _is_amd_rocme():
+            # torch.version.roc is not None → AMD ROCm
+            logger.info("XPUSYSMonitor: torch.cuda + ROCm — using AMDProvider.")
+            from .amd import AMDProvider
+            return AMDProvider(interval_ms=interval_ms)
+        else:
+            # torch.version.roc is None → NVIDIA
+            logger.info("XPUSYSMonitor: torch.cuda (NVIDIA) — using NvidiaProvider.")
+            from .nvidia import NvidiaProvider
+            return NvidiaProvider(interval_ms=interval_ms)
 
     if _detect_intel_torch():
         logger.info("XPUSYSMonitor: torch.xpu available — using IntelProvider.")
         from .intel import IntelProvider
         return IntelProvider(interval_ms=interval_ms)
-
-    # --- Future: AMD detection ---
-    # if _detect_amd():
-    #     logger.info("XPUSYSMonitor: AMD GPU detected — using AMDProvider.")
-    #     from .amd import AMDProvider
-    #     return AMDProvider(interval_ms=interval_ms)
 
     # --- Fallback: raw driver probing (torch not imported yet / non-std env) ---
     if _detect_intel_driver():
@@ -127,6 +129,21 @@ def _detect_nvidia_driver() -> bool:
         count = pynvml.nvmlDeviceGetCount()
         pynvml.nvmlShutdown()
         return count > 0
+    except Exception:
+        return False
+
+
+def _is_amd_rocme() -> bool:
+    """
+    Check if torch.cuda is backed by AMD ROCm.
+
+    Returns True if torch.version.roc is not None (AMD ROCm PyTorch).
+    Returns False if torch.version.roc is None (NVIDIA or standard CUDA).
+    """
+    try:
+        import torch
+        # torch.version.roc: True/str = AMD ROCm, None = NVIDIA/other
+        return torch.version.roc is not None
     except Exception:
         return False
 

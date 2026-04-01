@@ -6,6 +6,26 @@
 
 ## English
 
+### v1.0.2 — 2026-04-01
+
+#### ✨ New Features
+
+- **AMD GPU support**: Added `AMDProvider` for AMD GPUs running ROCm PyTorch.
+  - Full support for VRAM, GPU load, temperature, power, and clock frequency via `rocm_smi`
+  - Graceful fallback to basic `torch.cuda` stats when `rocm_smi_lib` is not installed
+  - Optional dependency: `pip install rocm_smi_lib`
+
+#### 🔧 Improvements
+
+- **Provider auto-detection**: Upgraded detection logic to use `torch.version.roc` for reliable AMD vs NVIDIA disambiguation — no longer depends on `pynvml` failure as a side-effect signal
+- **Package script**: Switched to whitelist mode (`pack_plugin.py`) — only explicitly listed files/directories are included, preventing dev/test scripts from leaking into releases
+
+#### 🖥️ Platform Support Update
+
+- AMD (ROCm) support status changed from *planned* to **fully supported**
+
+---
+
 ### v1.0.1 — 2026-03-28
 
 #### 🔧 Improvements
@@ -41,7 +61,7 @@ First stable release.
 
 - **Intel Arc (XPU)** — Level Zero Sysman; full support for power, frequency, and temperature (admin required on Windows)
 - **NVIDIA (CUDA)** — pynvml; full support without elevated privileges
-- **AMD (ROCm)** — planned
+- **AMD (ROCm)** — added in v1.0.2
 
 #### 🗂️ PCI ID Table (Intel Arc)
 
@@ -60,6 +80,26 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.2 — 2026-04-01
+
+#### ✨ 新功能
+
+- **AMD 显卡支持**：新增 `AMDProvider`，支持运行 ROCm 版 PyTorch 的 AMD 显卡。
+  - 通过 `rocm_smi` 完整支持显存、GPU 负载、温度、功耗及核心频率
+  - 未安装 `rocm_smi_lib` 时，自动降级为 `torch.cuda` 基础统计
+  - 可选依赖：`pip install rocm_smi_lib`
+
+#### 🔧 改进
+
+- **Provider 自动检测**：升级检测逻辑，使用 `torch.version.roc` 可靠区分 AMD 与 NVIDIA，不再依赖 `pynvml` 报错作为旁路信号
+- **打包脚本**：改为白名单模式（`pack_plugin.py`），只打包明确列出的文件/目录，避免开发/测试脚本混入发布包
+
+#### 🖥️ 平台支持更新
+
+- AMD（ROCm）支持状态由"计划中"变更为**正式支持**
+
+---
 
 ### v1.0.1 — 2026-03-28
 
@@ -96,7 +136,7 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 
 - **Intel Arc (XPU)** — 基于 Level Zero Sysman，完整支持功耗、频率、温度（Windows 下需管理员权限）
 - **NVIDIA (CUDA)** — 基于 pynvml，完整支持，无需提权
-- **AMD (ROCm)** — 计划中
+- **AMD (ROCm)** — v1.0.2 中正式加入
 
 #### 🗂️ PCI ID 表（Intel Arc）
 
