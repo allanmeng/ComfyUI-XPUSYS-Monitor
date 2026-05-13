@@ -456,6 +456,24 @@ echo [成功] 权限已提升，开始启动 ComfyUI...
 
 ---
 
+## 已知限制
+
+### ComfyUI-AIMDO-XPU（PYTHONPATH 劫持）环境
+
+在 Intel Arc 系统上运行 [ComfyUI-AIMDO-XPU](https://github.com/allanmeng/ComfyUI-AIMDO-XPU) 适配器（通过 `PYTHONPATH` 劫持 CUDA → XPU）时，插件的 PyTorch 层面内存追踪表现如下：
+
+| 指标 | 行为 |
+|------|------|
+| **VRAM 胶囊**（驱动层已用/总量）| ✅ 正常——从 Level Zero Sysman 读取（`zesMemoryGetState`）|
+| **RSV 胶囊**（`memory_reserved`）| ✅ 工作流运行时有变化；结束后归零（详见 CHANGELOG v1.0.3 PyTorch 2.12 行为变化）|
+| **VRAM 详情 → 模型与计算**（`memory_allocated`）| ❌ 始终为 0——模型显存分配走 AIMDO 劫持层，绕过了 PyTorch 的 Python 层分配器追踪 |
+
+这是 **PYTHONPATH 劫持方案的预期限制**。适配器的运行时补丁层在 `torch.xpu.memory_allocated()` 无法观察到的层面拦截 CUDA API 调用。硬件层面的显存读取（Level Zero）不受影响，保持完全准确。
+
+验证方式：关闭 AIMDO-XPU，以原生 XPU 支持运行 ComfyUI，即可恢复完整的 `memory_allocated()` 追踪。
+
+---
+
 ## 许可证
 
 [MIT License](LICENSE)

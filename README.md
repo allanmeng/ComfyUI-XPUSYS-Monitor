@@ -453,6 +453,24 @@ Adjustable in the **XPUSYS_Mon** section of ComfyUI's settings page:
 
 ---
 
+## Known Limitations
+
+### ComfyUI-AIMDO-XPU (PYTHONPATH Hijack) Environment
+
+On Intel Arc systems running the [ComfyUI-AIMDO-XPU](https://github.com/allanmeng/ComfyUI-AIMDO-XPU) adapter (which hijacks CUDA → XPU via `PYTHONPATH`), the plugin's PyTorch-level memory tracking has the following behavior:
+
+| Metric | Behavior |
+|--------|----------|
+| **VRAM capsule** (driver-level used/total) | ✅ Works correctly — reads from Level Zero Sysman (`zesMemoryGetState`) |
+| **RSV capsule** (`memory_reserved`) | ✅ Changes during workflow execution; drops to 0 when workflow ends (see CHANGELOG v1.0.3 for PyTorch 2.12 behavior) |
+| **VRAM detail → Models & Compute** (`memory_allocated`) | ❌ Stays at 0 — model memory allocations go through AIMDO's hijack layer, bypassing PyTorch's Python-level allocator tracking |
+
+This is an **expected limitation** of the PYTHONPATH hijack approach. The adapter's runtime-patching layer intercepts CUDA API calls at a level that `torch.xpu.memory_allocated()` cannot observe. The hardware-level VRAM reading (Level Zero) is unaffected and remains fully accurate.
+
+To verify: disabling AIMDO-XPU and running ComfyUI with native XPU support restores full `memory_allocated()` tracking.
+
+---
+
 ## License
 
 [MIT License](LICENSE)
