@@ -12,6 +12,13 @@
 
 - **RSV capsule color fix for PyTorch 2.12+**: In PyTorch 2.12, the XPU caching allocator was changed to aggressively release reserved memory back to the driver when tensors are freed — `torch.xpu.memory_reserved()` now returns 0 after a workflow completes (previously it kept a cached pool visible as RSV). The RSV capsule no longer uses the dim gray "N/A" color for this state, but instead shows with the default theme text color, making it clear the display is active and the value is simply 0.
 
+  | Behavior | PyTorch &lt; 2.12 | PyTorch 2.12+ |
+  |----------|-------------------|---------------|
+  | Workflow finishes → `memory_reserved()` | Keeps a cached free pool (e.g. 4+ GB visible as RSV) | Returns memory to driver immediately; RSV = 0 |
+  | `memory_allocated` vs `memory_reserved` | Allocated ≪ Reserved (large unused buffer) | Allocated ≈ Reserved (tight, no waste) |
+  | `empty_cache()` after `del tensor` | Releases cached pool, reserved drops | No-op on active tensors (already minimal) |
+  | Effective VRAM usage | More reserved than needed (waste) | More efficient — reserved = allocated |
+
 #### 🔧 Improvements
 
 - **Badge version synced**: JS version constant updated from 1.0.1 to 1.0.3 to match pyproject.toml
@@ -98,6 +105,13 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 #### 🐛 Bug 修复
 
 - **修复 PyTorch 2.12+ RSV 胶囊显示问题**：PyTorch 2.12 的 XPU 缓存分配器行为发生变化——张量释放后缓存池立即归还驱动，不再保留空闲预留内存（此前工作流结束后 RSV 会显示数 GB 的缓存池容量）。RSV 胶囊不再为此状态使用暗灰色"未生效"样式，而是使用主题默认文字颜色，表示"正在正常监控，当前值为 0"。
+
+  | 行为 | PyTorch &lt; 2.12 | PyTorch 2.12+ |
+  |------|------------------|---------------|
+  | 工作流结束 → `memory_reserved()` | 保留空闲缓存池（RSV 显示 4+ GB）| 立即归还驱动，RSV = 0 |
+  | `memory_allocated` vs `memory_reserved` | Allocated ≪ Reserved（大量未使用缓存）| Allocated ≈ Reserved（紧凑、无浪费）|
+  | `empty_cache()` 在 `del tensor` 后 | 释放缓存池，reserved 下降 | 对活动张量无影响（已最小化）|
+  | 有效显存利用率 | 预留多于实际需要（浪费）| 更高效——预留 ≈ 已分配 |
 
 #### 🔧 改进
 
