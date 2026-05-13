@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.1";
+const VERSION = "1.0.3";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -589,7 +589,7 @@ function renderRSV(snap) {
   const rsv = snap.vram_reserved_gb ?? 0;
   setHTML("rsv",
     `RSV<span class="n-gb">${rsv.toFixed(1)}</span> GB`,
-    rsv > 0.01 ? "xpusys-pwr-warn" : "xpusys-na");
+    rsv > 0.01 ? "xpusys-pwr-warn" : "");
 }
 
 function renderPWR(snap) {

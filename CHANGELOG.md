@@ -6,6 +6,18 @@
 
 ## English
 
+### v1.0.3 — 2026-05-14
+
+#### 🐛 Bug Fixes
+
+- **RSV capsule color fix for PyTorch 2.12+**: In PyTorch 2.12, the XPU caching allocator was changed to aggressively release reserved memory back to the driver when tensors are freed — `torch.xpu.memory_reserved()` now returns 0 after a workflow completes (previously it kept a cached pool visible as RSV). The RSV capsule no longer uses the dim gray "N/A" color for this state, but instead shows with the default theme text color, making it clear the display is active and the value is simply 0.
+
+#### 🔧 Improvements
+
+- **Badge version synced**: JS version constant updated from 1.0.1 to 1.0.3 to match pyproject.toml
+
+---
+
 ### v1.0.2 — 2026-04-01
 
 #### ✨ New Features
@@ -80,6 +92,18 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.3 — 2026-05-14
+
+#### 🐛 Bug 修复
+
+- **修复 PyTorch 2.12+ RSV 胶囊显示问题**：PyTorch 2.12 的 XPU 缓存分配器行为发生变化——张量释放后缓存池立即归还驱动，不再保留空闲预留内存（此前工作流结束后 RSV 会显示数 GB 的缓存池容量）。RSV 胶囊不再为此状态使用暗灰色"未生效"样式，而是使用主题默认文字颜色，表示"正在正常监控，当前值为 0"。
+
+#### 🔧 改进
+
+- **版本号同步**：JS 徽章版本号从 1.0.1 更新至 1.0.3，与 pyproject.toml 保持一致
+
+---
 
 ### v1.0.2 — 2026-04-01
 
