@@ -249,6 +249,40 @@ PWR 142W  75%
 
 ---
 
+### 📋 SPEC — GPU Specs
+
+Fifth capsule in the GPU group. Shows theoretical compute and bandwidth specs — static data loaded once at startup from a built-in PCI ID database (96 card entries).
+
+<img src="screenshot/Specs_EN.png" width="420" alt="SPEC Panel" />
+
+**Capsule display:**
+
+```
+SPEC FP16 117T 456GB/s  (Intel Arc B580)
+```
+
+| Field | Description |
+|-------|-------------|
+| FP16 | FP16 TFLOPS via XMX / Tensor Core / Matrix Core — the primary compute metric for AI inference in ComfyUI |
+| Bandwidth | Memory bandwidth in GB/s or TB/s — determines model loading and swapping speed |
+
+> When the backend cannot determine the GPU model (PCI ID unavailable), the capsule shows dim text `SPEC ---`.
+
+**Hover panel — format support matrix:**
+
+For each AI precision format (FP32, FP16, BF16, FP8, FP4, INT8, INT4), the tooltip shows:
+
+| Status | Meaning |
+|--------|---------|
+| Value + `(Official)` | Direct from [Blackwood's GPU AI Perf Assembly](https://blog.blackwood.cv/posts/gpu-ai-perf-assembly/) |
+| Value + `(Est.)` | Estimated from known compute ratios — hardware supports it but no direct spec available |
+| `不支持` | Not supported by this GPU architecture |
+| `未知` | Support status unknown |
+
+> Data source: [Blackwood's Blogs — GPU AI Perf Assembly](https://blog.blackwood.cv/posts/gpu-ai-perf-assembly/) · PCI ID Repository · DeviceHunt
+
+---
+
 ### 🌐 Platform Support
 
 - **Intel Arc (XPU)** — via Level Zero Sysman; full support for power, frequency, and temperature
@@ -440,7 +474,7 @@ Adjustable in the **XPUSYS_Mon** section of ComfyUI's settings page:
 - **Refresh Interval**: Data update frequency (200–5000 ms, default 1000 ms)
 - **Font Size**: Status bar text size (12–22 px, default 16 px)
 - **Language**: Chinese / English / Follow System
-- Per-capsule **show / hide** toggles
+- Per-capsule **show / hide** toggles (PWR, VRAM, RSV, Engine, SPEC, PRED, CPU, RAM)
 
 ---
 

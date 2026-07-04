@@ -249,6 +249,38 @@ PWR 142W  75%
 
 ---
 
+### 📋 SPEC — GPU 规格
+
+GPU 综合组的第五格（最新），展示 GPU 的理论算力与带宽规格。属静态数据，启动时从内置 PCI ID 数据库（96 卡条目）加载一次，之后永不刷新。
+
+**胶囊显示：**
+
+```
+SPEC FP16 117T 456GB/s  (Intel Arc B580)
+```
+
+| 字段 | 说明 |
+|------|------|
+| FP16 | FP16 TFLOPS（XMX / Tensor Core / Matrix Core 专用矩阵加速）— ComfyUI AI 推理的核心算力指标 |
+| 带宽 | 显存带宽 GB/s 或 TB/s — 决定模型加载与换出速度 |
+
+> 当后端无法识别 GPU 型号（PCI ID 未匹配）时，胶囊显示灰色 `SPEC ---`。
+
+**悬停面板 — 精度支持矩阵：**
+
+对于每种 AI 精度格式（FP32、FP16、BF16、FP8、FP4、INT8、INT4），浮层显示：
+
+| 状态 | 含义 |
+|------|------|
+| 数值 + `(官方)` | 直接来自 [Blackwood's GPU AI Perf Assembly](https://blog.blackwood.cv/posts/gpu-ai-perf-assembly/) |
+| 数值 + `(推测)` | 根据已知算力比率推算 — 硬件支持但缺少官方规格 |
+| `不支持` | 该架构不支持此格式 |
+| `未知` | 支持状态未知 |
+
+> 数据来源：[Blackwood's Blog — GPU AI Perf Assembly](https://blog.blackwood.cv/posts/gpu-ai-perf-assembly/) · PCI ID Repository · DeviceHunt
+
+---
+
 ### 🌐 跨平台支持
 
 - **Intel Arc (XPU)** — 基于 Level Zero Sysman，完整支持功耗、频率、温度监控
@@ -443,7 +475,7 @@ echo [成功] 权限已提升，开始启动 ComfyUI...
 - **刷新间隔**：数据更新频率（200–5000 ms，默认 1000 ms）
 - **字体大小**：状态栏字号（12–22 px，默认 16 px）
 - **界面语言**：中文 / English / 跟随系统
-- 各胶囊的**显示 / 隐藏**开关
+- 各胶囊的**显示 / 隐藏**开关（PWR、VRAM、RSV、Engine、SPEC、PRED、CPU、RAM）
 
 ---
 

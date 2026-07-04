@@ -1,0 +1,1387 @@
+{
+  "version": "1.0",
+  "source": "blackwood.cv GPU AI Perf Assembly · PCI ID Repository · DeviceHunt",
+  "updated": "2026-07-04",
+  "formats": {
+    "Pascal": "++---+-",
+    "Turing": "+*---*=",
+    "Ampere": "+**--*=",
+    "Ada Lovelace": "+**=-*=",
+    "Blackwell": "+**==*=",
+    "RDNA 1.0": "++---+-",
+    "RDNA 2.0": "++---+-",
+    "RDNA 3.0": "+*=--*=",
+    "RDNA 4.0": "+**=-**",
+    "Xe-HPG": "+*=--*=",
+    "Xe2-HPG": "+*=--*="
+  },
+  "cards": {
+    "0x1b00": [
+      {
+        "name_match": "Titan X",
+        "vendor": "nvidia",
+        "name": "NVIDIA Titan X (Pascal)",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 480,
+          "fp32_tflops": 10.97,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x1b02": [
+      {
+        "name_match": "Titan Xp",
+        "vendor": "nvidia",
+        "name": "NVIDIA Titan Xp",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 548,
+          "fp32_tflops": 12.15,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x1b06": [
+      {
+        "name_match": "1080 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1080 Ti",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 11,
+          "bw_gbs": 484,
+          "fp32_tflops": 11.34,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x1b80": [
+      {
+        "name_match": "1080",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1080",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 320,
+          "fp32_tflops": 8.873,
+          "tgp_w": 180
+        }
+      }
+    ],
+    "0x1b81": [
+      {
+        "name_match": "1070",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1070",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 256,
+          "fp32_tflops": 6.463,
+          "tgp_w": 150
+        }
+      }
+    ],
+    "0x1b82": [
+      {
+        "name_match": "1070 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1070 Ti",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 256,
+          "fp32_tflops": 8.186,
+          "tgp_w": 180
+        }
+      }
+    ],
+    "0x1c03": [
+      {
+        "name_match": "1060 6GB",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1060 6GB",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 6,
+          "bw_gbs": 192,
+          "fp32_tflops": 4.375,
+          "tgp_w": 120
+        }
+      }
+    ],
+    "0x1c20": [
+      {
+        "name_match": "1060 3GB",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1060 3GB",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 3,
+          "bw_gbs": 192,
+          "fp32_tflops": 3.854,
+          "tgp_w": 120
+        }
+      }
+    ],
+    "0x1c81": [
+      {
+        "name_match": "1050",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1050",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 2,
+          "bw_gbs": 112,
+          "fp32_tflops": 2.113,
+          "tgp_w": 75
+        }
+      }
+    ],
+    "0x1c82": [
+      {
+        "name_match": "1050 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce GTX 1050 Ti",
+        "arch": "Pascal",
+        "specs": {
+          "vram_gb": 4,
+          "bw_gbs": 112,
+          "fp32_tflops": 2.138,
+          "tgp_w": 75
+        }
+      }
+    ],
+    "0x1e04": [
+      {
+        "name_match": "2080 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2080 Ti",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 11,
+          "bw_gbs": 616,
+          "fp32_tflops": 13.45,
+          "fp16_tflops": 107.6,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x1e81": [
+      {
+        "name_match": "2080 Super",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2080 Super",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 496,
+          "fp32_tflops": 11.15,
+          "fp16_tflops": 89.2,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x1e82": [
+      {
+        "name_match": "2080",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2080",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 10.07,
+          "fp16_tflops": 80.5,
+          "tgp_w": 215
+        }
+      }
+    ],
+    "0x1e84": [
+      {
+        "name_match": "2070 Super",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2070 Super",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 9.062,
+          "fp16_tflops": 72.5,
+          "tgp_w": 215
+        }
+      }
+    ],
+    "0x1f02": [
+      {
+        "name_match": "2070",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2070",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 7.465,
+          "fp16_tflops": 59.7,
+          "tgp_w": 175
+        }
+      }
+    ],
+    "0x1f06": [
+      {
+        "name_match": "2060 Super",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2060 Super",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 7.181,
+          "fp16_tflops": 57.4,
+          "tgp_w": 175
+        }
+      }
+    ],
+    "0x1f08": [
+      {
+        "name_match": "2060",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 2060",
+        "arch": "Turing",
+        "specs": {
+          "vram_gb": 6,
+          "bw_gbs": 336,
+          "fp32_tflops": 6.451,
+          "fp16_tflops": 51.6,
+          "tgp_w": 160
+        }
+      }
+    ],
+    "0x2203": [
+      {
+        "name_match": "3090 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3090 Ti",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 24,
+          "bw_gbs": 1008,
+          "fp32_tflops": 40.0,
+          "fp16_tflops": 320.0,
+          "tgp_w": 450
+        }
+      }
+    ],
+    "0x2204": [
+      {
+        "name_match": "3090",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3090",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 24,
+          "bw_gbs": 936,
+          "fp32_tflops": 35.58,
+          "fp16_tflops": 284.6,
+          "tgp_w": 350
+        }
+      }
+    ],
+    "0x2208": [
+      {
+        "name_match": "3080 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3080 Ti",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 912,
+          "fp32_tflops": 34.1,
+          "fp16_tflops": 272.8,
+          "tgp_w": 350
+        }
+      }
+    ],
+    "0x2206": [
+      {
+        "name_match": "3080",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3080",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 10,
+          "bw_gbs": 760,
+          "fp32_tflops": 29.77,
+          "fp16_tflops": 238.2,
+          "tgp_w": 320
+        }
+      }
+    ],
+    "0x2482": [
+      {
+        "name_match": "3070 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3070 Ti",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 608,
+          "fp32_tflops": 21.75,
+          "fp16_tflops": 174.0,
+          "tgp_w": 290
+        }
+      }
+    ],
+    "0x2484": [
+      {
+        "name_match": "3070",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3070",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 20.31,
+          "fp16_tflops": 162.5,
+          "tgp_w": 220
+        }
+      }
+    ],
+    "0x2486": [
+      {
+        "name_match": "3060 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3060 Ti",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 16.2,
+          "fp16_tflops": 129.6,
+          "tgp_w": 200
+        }
+      }
+    ],
+    "0x2487": [
+      {
+        "name_match": "3060",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3060",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 360,
+          "fp32_tflops": 12.74,
+          "fp16_tflops": 101.9,
+          "tgp_w": 170
+        }
+      }
+    ],
+    "0x2507": [
+      {
+        "name_match": "3050",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 3050",
+        "arch": "Ampere",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 9.098,
+          "fp16_tflops": 72.8,
+          "tgp_w": 130
+        }
+      }
+    ],
+    "0x2684": [
+      {
+        "name_match": "4090",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4090",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 24,
+          "bw_gbs": 1008,
+          "fp32_tflops": 82.58,
+          "fp8_tflops": 1321,
+          "tgp_w": 450
+        }
+      }
+    ],
+    "0x26b5": [
+      {
+        "name_match": "4090D",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4090D",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 24,
+          "bw_gbs": 1008,
+          "fp32_tflops": 73.54,
+          "fp8_tflops": 1177,
+          "tgp_w": 425
+        }
+      }
+    ],
+    "0x27b0": [
+      {
+        "name_match": "4080 Super",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4080 Super",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 736,
+          "fp32_tflops": 52.22,
+          "fp8_tflops": 836,
+          "tgp_w": 320
+        }
+      }
+    ],
+    "0x2685": [
+      {
+        "name_match": "4080",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4080",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 717,
+          "fp32_tflops": 48.74,
+          "fp8_tflops": 780,
+          "tgp_w": 320
+        }
+      }
+    ],
+    "0x2705": [
+      {
+        "name_match": "4070 Ti Super",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4070 Ti Super",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 672,
+          "fp32_tflops": 44.1,
+          "fp8_tflops": 706,
+          "tgp_w": 285
+        }
+      }
+    ],
+    "0x2783": [
+      {
+        "name_match": "4070 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4070 Ti",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 504,
+          "fp32_tflops": 40.09,
+          "fp8_tflops": 642,
+          "tgp_w": 285
+        }
+      }
+    ],
+    "0x2704": [
+      {
+        "name_match": "4070 Super",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4070 Super",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 504,
+          "fp32_tflops": 35.48,
+          "fp8_tflops": 568,
+          "tgp_w": 220
+        }
+      }
+    ],
+    "0x2786": [
+      {
+        "name_match": "4070",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4070",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 504,
+          "fp32_tflops": 29.15,
+          "fp8_tflops": 466,
+          "tgp_w": 200
+        }
+      }
+    ],
+    "0x2803": [
+      {
+        "name_match": "4060 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4060 Ti",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 288,
+          "fp32_tflops": 22.06,
+          "fp8_tflops": 353,
+          "tgp_w": 160
+        }
+      }
+    ],
+    "0x2882": [
+      {
+        "name_match": "4060",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 4060",
+        "arch": "Ada Lovelace",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 272,
+          "fp32_tflops": 15.11,
+          "fp8_tflops": 242,
+          "tgp_w": 115
+        }
+      }
+    ],
+    "0x2b85": [
+      {
+        "name_match": "5090",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 5090",
+        "arch": "Blackwell",
+        "specs": {
+          "vram_gb": 32,
+          "bw_gbs": 1792,
+          "fp32_tflops": 104.75,
+          "int4_tops": 3352,
+          "tgp_w": 575
+        }
+      },
+      {
+        "name_match": "5090D",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 5090D",
+        "arch": "Blackwell",
+        "specs": {
+          "vram_gb": 32,
+          "bw_gbs": 1792,
+          "fp32_tflops": 104.75,
+          "int4_tops": 3352,
+          "tgp_w": 575
+        }
+      }
+    ],
+    "0x2c02": [
+      {
+        "name_match": "5080",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 5080",
+        "arch": "Blackwell",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 960,
+          "fp32_tflops": 56.28,
+          "int4_tops": 1801,
+          "tgp_w": 360
+        }
+      }
+    ],
+    "0x2c05": [
+      {
+        "name_match": "5070 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 5070 Ti",
+        "arch": "Blackwell",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 896,
+          "fp32_tflops": 43.94,
+          "int4_tops": 1406,
+          "tgp_w": 300
+        }
+      }
+    ],
+    "0x2f04": [
+      {
+        "name_match": "5070",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 5070",
+        "arch": "Blackwell",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 672,
+          "fp32_tflops": 30.87,
+          "int4_tops": 988,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x2d04": [
+      {
+        "name_match": "5060 Ti",
+        "vendor": "nvidia",
+        "name": "NVIDIA GeForce RTX 5060 Ti",
+        "arch": "Blackwell",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 448,
+          "fp32_tflops": 23.7,
+          "int4_tops": 758,
+          "tgp_w": 180
+        }
+      }
+    ],
+    "0x731f": [
+      {
+        "name_match": "5700 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 5700 XT",
+        "arch": "RDNA 1.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 9.754,
+          "tgp_w": 225
+        }
+      },
+      {
+        "name_match": "5700",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 5700",
+        "arch": "RDNA 1.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 448,
+          "fp32_tflops": 7.949,
+          "tgp_w": 180
+        }
+      },
+      {
+        "name_match": "5600 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 5600 XT",
+        "arch": "RDNA 1.0",
+        "specs": {
+          "vram_gb": 6,
+          "bw_gbs": 336,
+          "fp32_tflops": 8.064,
+          "tgp_w": 160
+        }
+      }
+    ],
+    "0x7340": [
+      {
+        "name_match": "5500 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 5500 XT",
+        "arch": "RDNA 1.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 5.196,
+          "tgp_w": 130
+        }
+      },
+      {
+        "name_match": "5500",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 5500",
+        "arch": "RDNA 1.0",
+        "specs": {
+          "vram_gb": 4,
+          "bw_gbs": 224,
+          "fp32_tflops": 4.632,
+          "tgp_w": 110
+        }
+      },
+      {
+        "name_match": "5300",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 5300",
+        "arch": "RDNA 1.0",
+        "specs": {
+          "vram_gb": 3,
+          "bw_gbs": 168,
+          "fp32_tflops": 3.168,
+          "tgp_w": 100
+        }
+      }
+    ],
+    "0x73bf": [
+      {
+        "name_match": "6950 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6950 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 576,
+          "fp32_tflops": 23.65,
+          "tgp_w": 335
+        }
+      },
+      {
+        "name_match": "6900 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6900 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 512,
+          "fp32_tflops": 23.04,
+          "tgp_w": 300
+        }
+      },
+      {
+        "name_match": "6800 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6800 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 512,
+          "fp32_tflops": 20.74,
+          "tgp_w": 300
+        }
+      },
+      {
+        "name_match": "6800",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6800",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 512,
+          "fp32_tflops": 16.17,
+          "tgp_w": 250
+        }
+      }
+    ],
+    "0x73df": [
+      {
+        "name_match": "6750 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6750 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 432,
+          "fp32_tflops": 13.31,
+          "tgp_w": 250
+        }
+      },
+      {
+        "name_match": "6750 GRE",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6750 GRE",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 384,
+          "fp32_tflops": 13.22,
+          "tgp_w": 230
+        }
+      },
+      {
+        "name_match": "6700 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6700 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 384,
+          "fp32_tflops": 13.22,
+          "tgp_w": 230
+        }
+      },
+      {
+        "name_match": "6700",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6700",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 10,
+          "bw_gbs": 320,
+          "fp32_tflops": 11.29,
+          "tgp_w": 175
+        }
+      }
+    ],
+    "0x73ff": [
+      {
+        "name_match": "6650 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6650 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 280,
+          "fp32_tflops": 10.79,
+          "tgp_w": 180
+        }
+      },
+      {
+        "name_match": "6600 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6600 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 256,
+          "fp32_tflops": 10.6,
+          "tgp_w": 160
+        }
+      },
+      {
+        "name_match": "6600",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6600",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 8.928,
+          "tgp_w": 132
+        }
+      }
+    ],
+    "0x743f": [
+      {
+        "name_match": "6500 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6500 XT",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 144,
+          "fp32_tflops": 5.765,
+          "tgp_w": 107
+        }
+      },
+      {
+        "name_match": "6400",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 6400",
+        "arch": "RDNA 2.0",
+        "specs": {
+          "vram_gb": 4,
+          "bw_gbs": 128,
+          "fp32_tflops": 3.565,
+          "tgp_w": 53
+        }
+      }
+    ],
+    "0x744c": [
+      {
+        "name_match": "7900 XTX",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7900 XTX",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 24,
+          "bw_gbs": 960,
+          "fp32_tflops": 61.42,
+          "int8_tops": 103,
+          "tgp_w": 355
+        }
+      },
+      {
+        "name_match": "7900 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7900 XT",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 20,
+          "bw_gbs": 800,
+          "fp32_tflops": 51.48,
+          "int8_tops": 103,
+          "tgp_w": 315
+        }
+      },
+      {
+        "name_match": "7900 GRE",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7900 GRE",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 576,
+          "fp32_tflops": 45.98,
+          "int8_tops": 92,
+          "tgp_w": 260
+        }
+      }
+    ],
+    "0x747e": [
+      {
+        "name_match": "7800 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7800 XT",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 624,
+          "fp32_tflops": 37.32,
+          "int8_tops": 74.6,
+          "tgp_w": 263
+        }
+      },
+      {
+        "name_match": "7700 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7700 XT",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 432,
+          "fp32_tflops": 35.17,
+          "int8_tops": 70.3,
+          "tgp_w": 245
+        }
+      },
+      {
+        "name_match": "7700",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7700",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 10,
+          "bw_gbs": 320,
+          "fp32_tflops": 25.18,
+          "int8_tops": 50.4,
+          "tgp_w": 170
+        }
+      }
+    ],
+    "0x7480": [
+      {
+        "name_match": "7600 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7600 XT",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 288,
+          "fp32_tflops": 22.61,
+          "int8_tops": 45.1,
+          "tgp_w": 190
+        }
+      },
+      {
+        "name_match": "7600",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 7600",
+        "arch": "RDNA 3.0",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 288,
+          "fp32_tflops": 21.75,
+          "int8_tops": 43.5,
+          "tgp_w": 165
+        }
+      }
+    ],
+    "0x7550": [
+      {
+        "name_match": "9070 XT",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 9070 XT",
+        "arch": "RDNA 4.0",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 644,
+          "fp32_tflops": 48.66,
+          "int4_tops": 1557,
+          "tgp_w": 304
+        }
+      },
+      {
+        "name_match": "9070",
+        "vendor": "amd",
+        "name": "AMD Radeon RX 9070",
+        "arch": "RDNA 4.0",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 432,
+          "fp32_tflops": 34.28,
+          "int4_tops": 1097,
+          "tgp_w": 220
+        }
+      }
+    ],
+    "0x56a0": [
+      {
+        "name_match": "A770",
+        "vendor": "intel",
+        "name": "Intel Arc A770",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 560,
+          "fp32_tflops": 19.66,
+          "int8_tops": 262,
+          "tgp_w": 225
+        }
+      }
+    ],
+    "0x56a1": [
+      {
+        "name_match": "A750",
+        "vendor": "intel",
+        "name": "Intel Arc A750",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 512,
+          "fp32_tflops": 17.2,
+          "int8_tops": 229,
+          "tgp_w": 225
+        }
+      }
+    ],
+    "0x56a2": [
+      {
+        "name_match": "A580",
+        "vendor": "intel",
+        "name": "Intel Arc A580",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 512,
+          "fp32_tflops": 12.29,
+          "int8_tops": 192,
+          "tgp_w": 225
+        }
+      }
+    ],
+    "0x56a5": [
+      {
+        "name_match": "A380",
+        "vendor": "intel",
+        "name": "Intel Arc A380",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 6,
+          "bw_gbs": 186,
+          "fp32_tflops": 4.4,
+          "int8_tops": 66,
+          "tgp_w": 75
+        }
+      }
+    ],
+    "0x56b1": [
+      {
+        "name_match": "Pro A40",
+        "vendor": "intel",
+        "name": "Intel Arc Pro A40/A50",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 6,
+          "bw_gbs": 192,
+          "fp32_tflops": 4.81,
+          "int8_tops": 96,
+          "tgp_w": 75
+        }
+      }
+    ],
+    "0x56b3": [
+      {
+        "name_match": "Pro A60",
+        "vendor": "intel",
+        "name": "Intel Arc Pro A60",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 384,
+          "fp32_tflops": 8.19,
+          "int8_tops": 151,
+          "tgp_w": 130
+        }
+      }
+    ],
+    "0x5690": [
+      {
+        "name_match": "A770M",
+        "vendor": "intel",
+        "name": "Intel Arc A770M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 480,
+          "fp32_tflops": 19.66,
+          "int8_tops": 262,
+          "tgp_w": 150
+        }
+      }
+    ],
+    "0x5691": [
+      {
+        "name_match": "A730M",
+        "vendor": "intel",
+        "name": "Intel Arc A730M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 288,
+          "fp32_tflops": 10.99,
+          "int8_tops": 146,
+          "tgp_w": 120
+        }
+      }
+    ],
+    "0x5692": [
+      {
+        "name_match": "A550M",
+        "vendor": "intel",
+        "name": "Intel Arc A550M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 6.86,
+          "int8_tops": 92,
+          "tgp_w": 80
+        }
+      }
+    ],
+    "0x5696": [
+      {
+        "name_match": "A570M",
+        "vendor": "intel",
+        "name": "Intel Arc A570M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 7.68,
+          "int8_tops": 102,
+          "tgp_w": 80
+        }
+      }
+    ],
+    "0x5697": [
+      {
+        "name_match": "A530M",
+        "vendor": "intel",
+        "name": "Intel Arc A530M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 5.12,
+          "int8_tops": 68,
+          "tgp_w": 50
+        }
+      }
+    ],
+    "0x56b0": [
+      {
+        "name_match": "Pro A30M",
+        "vendor": "intel",
+        "name": "Intel Arc Pro A30M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 4,
+          "bw_gbs": 224,
+          "fp32_tflops": 3.07,
+          "int8_tops": 52,
+          "tgp_w": 35
+        }
+      }
+    ],
+    "0x56b2": [
+      {
+        "name_match": "Pro A60M",
+        "vendor": "intel",
+        "name": "Intel Arc Pro A60M",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 8,
+          "bw_gbs": 224,
+          "fp32_tflops": 6.86,
+          "int8_tops": 92,
+          "tgp_w": 75
+        }
+      }
+    ],
+    "0xe20b": [
+      {
+        "name_match": "B580",
+        "vendor": "intel",
+        "name": "Intel Arc B580",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 456,
+          "fp32_tflops": 13.67,
+          "int8_tops": 233,
+          "tgp_w": 190
+        }
+      }
+    ],
+    "0xe20a": [
+      {
+        "name_match": "B770",
+        "vendor": "intel",
+        "name": "Intel Arc B770",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 512,
+          "fp32_tflops": 18.36,
+          "int8_tops": 312,
+          "tgp_w": 190
+        }
+      }
+    ],
+    "0xe20c": [
+      {
+        "name_match": "B570",
+        "vendor": "intel",
+        "name": "Intel Arc B570",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 10,
+          "bw_gbs": 380,
+          "fp32_tflops": 11.52,
+          "int8_tops": 203,
+          "tgp_w": 150
+        }
+      }
+    ],
+    "0xe208": [
+      {
+        "name_match": "B580M",
+        "vendor": "intel",
+        "name": "Intel Arc B580M",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 12,
+          "bw_gbs": 456,
+          "fp32_tflops": 10.68,
+          "int8_tops": 170,
+          "tgp_w": 120
+        }
+      }
+    ],
+    "0xe209": [
+      {
+        "name_match": "B570M",
+        "vendor": "intel",
+        "name": "Intel Arc B570M",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 10,
+          "bw_gbs": 380,
+          "fp32_tflops": 8.82,
+          "int8_tops": 140,
+          "tgp_w": 100
+        }
+      }
+    ],
+    "0xe211": [
+      {
+        "name_match": "Pro B60",
+        "vendor": "intel",
+        "name": "Intel Arc Pro B60",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 24,
+          "bw_gbs": 456,
+          "fp32_tflops": 12.29,
+          "int8_tops": 197,
+          "tgp_w": 200
+        }
+      }
+    ],
+    "0xe212": [
+      {
+        "name_match": "Pro B50",
+        "vendor": "intel",
+        "name": "Intel Arc Pro B50",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 16,
+          "bw_gbs": 224,
+          "fp32_tflops": 10.65,
+          "int8_tops": 170,
+          "tgp_w": 70
+        }
+      }
+    ],
+    "0xe222": [
+      {
+        "name_match": "Pro B65",
+        "vendor": "intel",
+        "name": "Intel Arc Pro B65",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 32,
+          "bw_gbs": 608,
+          "fp32_tflops": 12.29,
+          "int8_tops": 197,
+          "tgp_w": 200
+        }
+      }
+    ],
+    "0xe223": [
+      {
+        "name_match": "Pro B70",
+        "vendor": "intel",
+        "name": "Intel Arc Pro B70",
+        "arch": "Xe2-HPG",
+        "specs": {
+          "vram_gb": 32,
+          "bw_gbs": 608,
+          "fp32_tflops": 22.94,
+          "int8_tops": 367,
+          "tgp_w": 230
+        }
+      }
+    ],
+    "0x56a6": [
+      {
+        "name_match": "A310",
+        "vendor": "intel",
+        "name": "Intel Arc A310",
+        "arch": "Xe-HPG",
+        "specs": {
+          "vram_gb": 4,
+          "bw_gbs": 124,
+          "fp32_tflops": 3.07,
+          "int8_tops": 52,
+          "tgp_w": 75
+        }
+      }
+    ]
+  },
+  "pending": [
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 5090D v2",
+      "arch": "Blackwell",
+      "specs": {
+        "vram_gb": 32,
+        "bw_gbs": 1344,
+        "fp32_tflops": 104.75,
+        "int4_tops": 2375,
+        "tgp_w": 575
+      }
+    },
+    {
+      "vendor": "nvidia",
+      "name": "NVIDIA GeForce RTX 5060",
+      "arch": "Blackwell",
+      "specs": {
+        "vram_gb": 8,
+        "bw_gbs": 448,
+        "fp32_tflops": 19.2,
+        "int4_tops": 614,
+        "tgp_w": 145
+      }
+    }
+  ]
+}

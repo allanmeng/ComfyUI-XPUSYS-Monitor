@@ -25,6 +25,10 @@ logger = logging.getLogger("XPUSYSMonitor")
 # Will be set by __init__.py after creating the provider
 _provider = None
 
+# Path to gpu_specs.json — resolved relative to this file
+_SPECS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "gpu_specs.json")
+_specs_cache = None
+
 
 def set_provider(provider):
     global _provider
@@ -48,6 +52,7 @@ def _snapshot_to_dict(snap) -> dict:
         "power_available":     snap.power_available,
         "tgp_w":               round(snap.tgp_w, 1),
         "device_name":         snap.device_name,
+        "pci_id":              snap.pci_id,
         # CPU
         "cpu_pct":             round(snap.cpu_pct,      1),
         "cpu_freq_ghz":        round(snap.cpu_freq_ghz, 2),
@@ -76,6 +81,20 @@ def register_routes(server):
             return web.json_response({"error": "provider not ready"}, status=503)
         snap = _provider.get_snapshot()
         return web.json_response(_snapshot_to_dict(snap))
+
+    @server.routes.get("/xpusys/specs")
+    async def get_specs(request):
+        """Return the GPU specs JSON database. Cached in memory after first read."""
+        global _specs_cache
+        if _specs_cache is None:
+            try:
+                with open(_SPECS_PATH, "r", encoding="utf-8") as f:
+                    _specs_cache = json.load(f)
+                logger.info(f"XPUSYSMonitor: specs loaded ({len(_specs_cache.get('cards', {}))} cards)")
+            except Exception as exc:
+                logger.warning(f"XPUSYSMonitor: specs load error — {exc}")
+                return web.json_response({"error": "specs not available"}, status=503)
+        return web.json_response(_specs_cache)
 
     @server.routes.post("/xpusys/model_sizes")
     async def get_model_sizes(request):
@@ -135,7 +154,7 @@ def register_routes(server):
             logger.debug(f"XPUSYSMonitor: model_sizes error — {exc}")
             return web.json_response({"models": []})
 
-    logger.info("XPUSYSMonitor: HTTP routes /xpusys/stats and /xpusys/model_sizes registered.")
+    logger.info("XPUSYSMonitor: HTTP routes /xpusys/stats, /xpusys/specs and /xpusys/model_sizes registered.")
 
 
 async def broadcast_loop(server, interval_s: float = 1.0):

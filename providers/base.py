@@ -56,6 +56,7 @@ class GPUSnapshot:
     # --- Meta ---
     is_admin:     bool          = False
     gpu_vendor:   str           = ""    # "intel" | "nvidia" | "amd" | "unknown"
+    pci_id:       str           = ""    # PCI device ID in hex with 0x prefix, e.g. "0x2684"
     error:        Optional[str] = None
 
 

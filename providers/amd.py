@@ -136,6 +136,35 @@ class AMDProvider(BaseGPUProvider):
                 pass
         return "AMD GPU"
 
+    def _read_pci_id(self) -> str:
+        """Return PCI device ID as hex string e.g. '0x744c', or '' on failure."""
+        if self._rocm_ok:
+            try:
+                import rocm_smi
+                # rocm_smi.getPciId returns PCI ID as hex string like "0x744c"
+                raw = rocm_smi.getPciId(0)
+                if isinstance(raw, int):
+                    return f"0x{raw:04x}"
+                raw = str(raw).strip().lower()
+                if raw.startswith("0x"):
+                    return raw
+                return f"0x{raw}"
+            except Exception:
+                pass
+        if self._torch_ok:
+            try:
+                import torch
+                # Try torch.cuda.get_device_properties — may expose pci_bus_id
+                props = torch.cuda.get_device_properties(0)
+                # Some newer PyTorch versions expose pci_bus_id; parse if available
+                pci = getattr(props, "pci_bus_id", None)
+                if pci and ":" in pci:
+                    # convert bus:dev.func to device ID — not reliable, skip
+                    pass
+            except Exception:
+                pass
+        return ""
+
     def _read_vram(self) -> Tuple[float, float, float]:
         """Return (free_gb, total_gb, driver_used_gb)."""
         if self._rocm_ok:
@@ -250,6 +279,7 @@ class AMDProvider(BaseGPUProvider):
         else:
             try:
                 snap.device_name = self._read_device_name()
+                snap.pci_id      = self._read_pci_id()
 
                 # VRAM
                 free_gb, total_gb, driver_used_gb = self._read_vram()

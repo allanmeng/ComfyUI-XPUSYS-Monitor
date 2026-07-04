@@ -142,6 +142,16 @@ class NvidiaProvider(BaseGPUProvider):
         except Exception:
             return "NVIDIA GPU"
 
+    def _read_pci_id(self) -> str:
+        """Return PCI device ID as hex string e.g. '0x2684', or '' on failure."""
+        try:
+            import pynvml
+            info = pynvml.nvmlDeviceGetPciInfo(self._handle)
+            dev_id = info.pciDeviceId & 0xFFFF
+            return f"0x{dev_id:04x}"
+        except Exception:
+            return ""
+
     def _read_vram(self) -> Tuple[float, float, float]:
         """Return (free_gb, total_gb, driver_used_gb)."""
         try:
@@ -231,6 +241,7 @@ class NvidiaProvider(BaseGPUProvider):
         else:
             try:
                 snap.device_name = self._read_device_name()
+                snap.pci_id      = self._read_pci_id()
 
                 # VRAM
                 free_gb, total_gb, driver_used_gb = self._read_vram()

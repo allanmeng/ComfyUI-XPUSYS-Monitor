@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.3";
+const VERSION = "1.0.4";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -27,6 +27,7 @@ const S = {
   showVRAM:      `${NS}.ShowVRAM`,
   showRSV:       `${NS}.ShowRSV`,
   showPower:     `${NS}.ShowPower`,
+  showSpecs:     `${NS}.ShowSpecs`,
 };
 
 // Intel Arc PCI device ID → spec TBP (W) — Intel ARK / product pages / NotebookCheck
@@ -248,6 +249,8 @@ function injectStyles() {
     .n-gb    { display: inline-block; min-width: 4ch; text-align: right; }
     .n-temp  { display: inline-block; min-width: 4ch; text-align: right; }
     .n-w     { display: inline-block; min-width: 4ch; text-align: right; }
+    .n-val   { display: inline-block; min-width: 5ch; text-align: right; }
+    .n-bw    { display: inline-block; min-width: 6ch; text-align: right; }
     .n-ratio { display: inline-block; min-width: 4ch; text-align: right; }
 
     /* ── 显存预测胶囊 ── */
@@ -329,7 +332,7 @@ function injectStyles() {
     }
 
     /* ── GPU 子项 ── */
-    .gpu-engine, .gpu-vram, .gpu-rsv, .gpu-pwr {
+    .gpu-engine, .gpu-vram, .gpu-rsv, .gpu-pwr, .gpu-specs {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -347,8 +350,10 @@ function injectStyles() {
     .gpu-rsv    { min-width: 10ch; }
     /* pwr: "PWR"(3)+n-w(4)+n-ratio(4) = 11ch */
     .gpu-pwr    { min-width: 11ch; }
-    .gpu-pwr { border-right: none; }
-    .gpu-engine:hover, .gpu-vram:hover, .gpu-rsv:hover, .gpu-pwr:hover {
+    /* specs: "SPEC"(4)+"FP16"(4)+n-val(5)+n-bw(6)+"GB"(2) = 21ch */
+    .gpu-specs  { min-width: 21ch; }
+    .gpu-specs { border-right: none; }
+    .gpu-engine:hover, .gpu-vram:hover, .gpu-rsv:hover, .gpu-pwr:hover, .gpu-specs:hover {
       background: rgba(255, 255, 255, 0.06);
       border-radius: 3px;
     }
@@ -363,6 +368,7 @@ function injectStyles() {
     .xpusys-pwr-ok   { color: #36cfc9; }
     .xpusys-pwr-warn { color: #b37feb; }
     .xpusys-pwr-crit { color: #ff4d4f; }
+    .xpusys-specs-ok { color: #597ef7; }
     .xpusys-na       { color: #555; }
 
     .xpusys-lock {
@@ -452,7 +458,62 @@ function tipNote(t)  { return `<div class="xpusys-tooltip-note">${t}</div>`; }
 // DOM — bar builder
 // ---------------------------------------------------------------------------
 
-let _sec = {};   // { predictor, cpu, ram, engine, vram, rsv, pwr } each { el, valEl }
+let _sec = {};   // { predictor, cpu, ram, engine, vram, rsv, pwr, specs } each { el, valEl }
+
+// ---------------------------------------------------------------------------
+// GPU specs cache — loaded once from gpu_specs.json at init
+// ---------------------------------------------------------------------------
+let GPU_SPECS    = null;  // { "0x2684": { vendor, name, arch, specs }, ... }
+let GPU_PENDING  = null;  // [{ vendor, name, arch, specs }, ...]
+let GPU_FORMATS  = null;  // { "Ada Lovelace": "**=-*=", ... }
+
+// Format display order: FP32 FP16 BF16 FP8 FP4 INT8 INT4
+const FORMAT_KEYS  = ["fp32","fp16","bf16","fp8","fp4","int8","int4"];
+const FORMAT_UNITS = ["TFLOPS","TFLOPS","TFLOPS","TFLOPS","TOPS","TOPS","TOPS"];
+
+function initSpecs() {
+  fetch("/xpusys/specs")
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(data => {
+      GPU_SPECS   = data.cards   || {};
+      GPU_PENDING = data.pending || [];
+      GPU_FORMATS = data.formats || {};
+      if (_snap) renderSpec(_snap);
+    })
+    .catch(() => { /* silent — no specs available */ });
+}
+
+function resolveSpec(snap) {
+  const entries = GPU_SPECS?.[snap.pci_id];
+  if (!entries) return matchPending(snap);
+  // entries is always an array now — PCI ID → [{ name_match, vendor, ... }, ...]
+  if (entries.length === 1) return entries[0];
+  // Multiple entries for the same PCI ID → filter by name_match
+  if (!snap.device_name) return entries[0];
+  const dn = snap.device_name.toLowerCase();
+  // Try longest name_match first (more specific = better)
+  const sorted = [...entries].sort((a, b) => (b.name_match?.length || 0) - (a.name_match?.length || 0));
+  for (const e of sorted) {
+    if (e.name_match && dn.includes(e.name_match.toLowerCase())) return e;
+  }
+  return entries[0]; // fallback
+}
+
+function matchPending(snap) {
+  if (!GPU_PENDING || !snap.device_name) return null;
+  const dn = snap.device_name.toLowerCase();
+  for (const p of GPU_PENDING) {
+    const nm = p.name.toLowerCase();
+    const fragments = nm.replace(/[^a-z0-9\s]/g, "").split(/\s+/);
+    if (dn.includes(nm)) return p;
+    let hits = 0;
+    for (const f of fragments) {
+      if (f.length > 2 && dn.includes(f)) hits++;
+    }
+    if (hits >= Math.max(2, fragments.length - 1)) return p;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Predictor state  (model-file scan results from /xpusys/model_sizes)
@@ -491,11 +552,13 @@ function buildBar() {
   _sec.vram   = makeSection("gpu-vram",   "VRAM ---");
   _sec.rsv    = makeSection("gpu-rsv",    "RSV ---");
   _sec.pwr    = makeSection("gpu-pwr",    "PWR ---");
+  _sec.specs  = makeSection("gpu-specs",  "SPC ---");
 
   gpuGroup.appendChild(_sec.engine.el);
   gpuGroup.appendChild(_sec.vram.el);
   gpuGroup.appendChild(_sec.rsv.el);
   gpuGroup.appendChild(_sec.pwr.el);
+  gpuGroup.appendChild(_sec.specs.el);
   bar.appendChild(gpuGroup);
 
   for (const [key, sec] of Object.entries(_sec)) {
@@ -545,6 +608,7 @@ function renderSnap(snap) {
   renderVRAM(snap);
   renderRSV(snap);
   renderPWR(snap);
+  renderSpec(snap);
   renderPredictor();   // re-render with latest vram_total_gb from snap
   applyVisibility();
 }
@@ -589,7 +653,7 @@ function renderRSV(snap) {
   const rsv = snap.vram_reserved_gb ?? 0;
   setHTML("rsv",
     `RSV<span class="n-gb">${rsv.toFixed(1)}</span> GB`,
-    rsv > 0.01 ? "xpusys-pwr-warn" : "");
+    "xpusys-pwr-warn");
 }
 
 function renderPWR(snap) {
@@ -648,7 +712,7 @@ function renderPredictor() {
       + ` | Success Rate:<span style="color:${c}">${rate}%</span>`
     : `<span class="pred-zh">模型体量:</span><span style="color:${c}">${total.toFixed(2)}G</span>/${vEff}G`
       + ` | <span class="pred-zh">状态:</span><span class="pred-zh" style="color:${c}">${risk}</span>`
-      + ` | <span class="pred-zh">预测工作流执行成功率:</span><span style="color:${c}">${rate}%</span>`;
+      + ` | <span class="pred-zh">预测成功率:</span><span style="color:${c}">${rate}%</span>`;
   setHTML("predictor", html);
 }
 
@@ -740,6 +804,7 @@ function applyVisibility() {
   _sec.vram.el.style.display   = getSetting(S.showVRAM,   true) ? "" : "none";
   _sec.rsv.el.style.display    = getSetting(S.showRSV,    true) ? "" : "none";
   _sec.pwr.el.style.display    = getSetting(S.showPower,  true) ? "" : "none";
+  _sec.specs.el.style.display  = getSetting(S.showSpecs, true) ? "" : "none";
 }
 
 function applyFontSize(val) {
@@ -756,7 +821,8 @@ function showTip(key, snap) {
   if (!el) return;
   const builders = { predictor: buildPredictorTip,
                      cpu: buildCPUTip, ram: buildRAMTip, engine: buildEngineTip,
-                     vram: buildVRAMTip, rsv: buildRSVTip, pwr: buildPWRTip };
+                     vram: buildVRAMTip, rsv: buildRSVTip, pwr: buildPWRTip,
+                     specs: buildSpecTip };
   const html = builders[key]?.(snap, en());
   if (html) showTooltip(el, html);
 }
@@ -913,6 +979,139 @@ function buildPWRTip(snap, eng) {
   if (tgp > 0) html += tipRow("TGP 上限",  tgp.toFixed(0) + " W", "#666")
                      + tipRow("负载比例", (pct * 100).toFixed(0) + " %", c);
   return html + tipNote("来源: Intel Level Zero · zesPowerGetEnergyCounter\n需要管理员权限 · 双采样能量差值");
+}
+
+function fmtTflops(v) {
+  if (v == null || v <= 0) return "---";
+  return Math.round(v) + "";
+}
+
+function fmtBw(v) {
+  if (v == null || v <= 0) return "---";
+  if (v >= 1000) return (v / 1000).toFixed(1);
+  return Math.round(v) + "";
+}
+
+function renderSpec(snap) {
+  const spec = resolveSpec(snap);
+  if (!spec) {
+    setHTML("specs", "SPEC ---", "xpusys-na");
+    return;
+  }
+  const s = spec.specs;
+  let compute = s.fp16_tflops;
+  if (!compute && s.fp8_tflops)  compute = s.fp8_tflops / 2;
+  if (!compute && s.int8_tops)   compute = s.int8_tops / 2;
+  if (!compute && s.fp32_tflops) compute = s.fp32_tflops * 2;
+  const bw      = s.bw_gbs || 0;
+  const cComp   = compute > 0 ? "xpusys-specs-ok" : "xpusys-na";
+  const bwUnit  = bw >= 1000 ? "TB/s" : "GB/s";
+  const html    = `SPEC FP16<span class="n-val">${fmtTflops(compute)}T</span> <span class="n-bw">${fmtBw(bw)}${bwUnit}</span>`;
+  setHTML("specs", html, cComp);
+}
+
+function formatRow(label, val, unit, cls) {
+  const prefix = label + " ";
+  if (val == null) return tipRow(label, unit, "#555");
+  const c = cls ? ` style="color:${cls}"` : "";
+  return tipRow(label, `<span${c}>${val} ${unit}</span>`);
+}
+
+function buildSpecTip(snap, eng) {
+  const spec = resolveSpec(snap);
+  if (!spec) return null;
+  const s     = spec.specs;
+  const dev   = shortDeviceName(snap.device_name) || spec.name;
+  const arch  = spec.arch || "";
+  const fmts  = GPU_FORMATS ? GPU_FORMATS[arch] : null;
+
+  // Estimate helpers for formats supported but without explicit blog data
+  function _est(fmt) {
+    if (fmt === "fp16" || fmt === "bf16") {
+      if (s.fp16_tflops) return { v: s.fp16_tflops, official: true };
+      if (s.fp8_tflops)  return { v: s.fp8_tflops / 2,  est: true };
+      if (s.int8_tops)   return { v: s.int8_tops / 2,  est: true };
+      if (s.fp32_tflops) return { v: s.fp32_tflops * 2, est: true };
+    }
+    if (fmt === "fp8") {
+      if (s.fp8_tflops)  return { v: s.fp8_tflops, official: true };
+      if (s.int8_tops)   return { v: s.int8_tops / 2,  est: true };
+      if (s.fp16_tflops) return { v: s.fp16_tflops * 2,  est: true };
+    }
+    if (fmt === "int8") {
+      if (s.int8_tops)   return { v: s.int8_tops, official: true };
+      if (s.fp8_tflops)  return { v: s.fp8_tflops * 2,  est: true };
+      if (s.fp16_tflops) return { v: s.fp16_tflops * 2,  est: true };
+      if (s.fp32_tflops) return { v: s.fp32_tflops * 2,  est: true };
+    }
+    if (fmt === "int4") {
+      if (s.int4_tops)   return { v: s.int4_tops, official: true };
+      if (s.int8_tops)   return { v: s.int8_tops * 2,    est: true };
+      if (s.fp8_tflops)  return { v: s.fp8_tflops * 4,  est: true };
+    }
+    return null;
+  }
+
+  function _fmt(n) {
+    if (n == null || n <= 0) return "—";
+    if (n >= 1000) return (n / 1000).toFixed(2) + "K";
+    return n.toFixed(1);
+  }
+
+  const title  = eng ? "📋 GPU Specs && AI Performance" : "📋 GPU规格 && AI性能";
+  const lblMdl = eng ? "Model" : "型号";
+  const lblArc = eng ? "Architecture" : "架构";
+  const lblVR  = eng ? "VRAM" : "显存";
+  const lblBW  = eng ? "Bandwidth" : "带宽";
+  const lblTGP = "TGP";
+
+  let html = tipTitle(title)
+    + tipRow(lblMdl, spec.name)
+    + (s.tgp_w   ? tipRow(lblTGP, s.tgp_w + " W") : "")
+    + (arch      ? tipRow(lblArc, arch) : "")
+    + (s.vram_gb ? tipRow(lblVR,  s.vram_gb + " GB") : "")
+    + (s.bw_gbs  ? tipRow(lblBW,  s.bw_gbs + " GB/s") : "");
+
+  // ── AI format support rows ──
+  if (fmts) {
+    html += `<div style="border-top:1px solid rgba(255,255,255,0.08);margin:4px 0"></div>`;
+    for (let i = 0; i < FORMAT_KEYS.length; i++) {
+      const key  = FORMAT_KEYS[i];
+      const unit = FORMAT_UNITS[i];
+      const disp = FORMAT_KEYS[i].toUpperCase();
+      const symb = fmts[i];
+
+      // FP32: always from blog spec
+      if (key === "fp32") {
+        if (s.fp32_tflops) html += tipRow("FP32", _fmt(s.fp32_tflops) + " TFLOPS" + (eng ? " (Official)" : " (官方)"));
+        else html += tipRow("FP32", "—", "#555");
+        continue;
+      }
+
+      if (symb === "-") {
+        html += tipRow(disp, "不支持", "#555");
+        continue;
+      }
+      if (symb === "?") {
+        html += tipRow(disp, "未知", "#666");
+        continue;
+      }
+
+      const est = _est(key);
+      if (est) {
+        const suffix = eng
+          ? (est.official ? " (Official)" : est.est ? " (Est.)" : "")
+          : (est.official ? " (官方)" : est.est ? " (推测)" : "");
+        const valStr = _fmt(est.v);
+        const hl = key === "fp16" ? "#597ef7" : null;
+        html += tipRow(disp, valStr + " " + unit + suffix, hl);
+      } else if (symb === "*" || symb === "+" || symb === "=") {
+        html += tipRow(disp, eng ? "Supported" : "支持", "#666");
+      }
+    }
+  }
+
+  return html + tipNote(eng ? "Source: Blackwood's Blogs" : "数据来源：Blackwood's Blog");
 }
 
 function buildPredictorTip(snap, eng) {
@@ -1261,6 +1460,13 @@ app.registerExtension({
       category: [NS, t("\uE005显卡监控", "\uE005GPU Monitor"), t("\uE004功率", "\uE004Power")],
       onChange: applyVisibility,
     });
+    app.ui.settings.addSetting({
+      id: S.showSpecs, name: t("显示 GPU 规格（SPC）", "Show GPU Specs (SPC)"),
+      tooltip: t("在状态栏显示 GPU 理论算力与带宽规格", "Show theoretical GPU compute and bandwidth specs in the status bar"),
+      type: "boolean", defaultValue: true,
+      category: [NS, t("\uE005显卡监控", "\uE005GPU Monitor"), t("\uE005GPU规格", "\uE005GPU Specs")],
+      onChange: applyVisibility,
+    });
 
     const bar = buildBar();
     mountBar(bar);
@@ -1270,6 +1476,7 @@ app.registerExtension({
 
     api.addEventListener("message", onWsMessage);
     startPolling();
+    initSpecs();
 
     // 对已存在节点补挂 widget 钩子，然后初始扫描
     app.graph._nodes?.forEach(n => applyModelHook(n));

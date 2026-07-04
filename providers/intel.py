@@ -110,6 +110,7 @@ class _LevelZeroSysman:
         self._power_denied          = False
         self._available             = False
         self.device_name: str   = ""
+        self.pci_id:       str   = ""
         self.tgp_w:       float = 0.0
         self._load(is_admin)
 
@@ -199,6 +200,21 @@ class _LevelZeroSysman:
                 name_bytes = raw[idx:idx + 64].split(b'\x00')[0]
                 self.device_name = name_bytes.decode('utf-8', errors='replace').strip()
                 logger.info(f"XPUSYSMonitor: device name = {self.device_name!r}")
+                # ── Attempt to extract PCI device ID ──
+                # Method 1: regex from device_name "[0x...]" suffix
+                import re
+                m = re.search(r'\[0x([0-9a-fA-F]+)\]', self.device_name)
+                if m:
+                    self.pci_id = "0x" + m.group(1).lower()
+                    logger.info(f"XPUSYSMonitor: PCI ID (regex) = {self.pci_id}")
+                else:
+                    # Method 2: read ze_device_properties_t.deviceId at offset 24
+                    # stype(4)+pad(4)+pNext(8)+type(4)+vendorId(4)+deviceId(4) = offset 24
+                    dev_id = ctypes.cast(ctypes.addressof(buf) + 24,
+                                         ctypes.POINTER(ctypes.c_uint32))[0]
+                    if 0 < dev_id < 0xFFFF:
+                        self.pci_id = f"0x{dev_id:04x}"
+                        logger.info(f"XPUSYSMonitor: PCI ID (struct) = {self.pci_id}")
             else:
                 logger.debug("XPUSYSMonitor: 'Intel' not found in device properties buffer")
         except Exception as exc:
@@ -839,6 +855,7 @@ class IntelProvider(BaseGPUProvider):
         snap.gpu_temp_c   = self._lz.read_gpu_temp_c()
         snap.power_w      = self._lz.read_power_w()
         snap.device_name  = self._lz.device_name
+        snap.pci_id       = self._lz.pci_id
         snap.tgp_w        = self._lz.tgp_w
 
         # CPU / RAM

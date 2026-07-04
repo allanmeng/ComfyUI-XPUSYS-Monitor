@@ -6,6 +6,34 @@
 
 ## English
 
+### v1.0.4 — 2026-07-04
+
+#### ✨ New Features
+
+- **GPU Specs capsule (SPEC)**: New 5th GPU capsule displaying theoretical compute and bandwidth specs for NVIDIA, AMD, and Intel Arc GPUs.
+  - Capsule shows: `SPEC FP16 xxxT xxxGB/s` (highlighted in blue)
+  - Hover tooltip reveals full spec sheet: VRAM, bandwidth, TGP, FP32, FP16, BF16, FP8, FP4, INT8, INT4 with format support matrix per architecture
+  - Source data from [Blackwood's Blog - GPU AI Perf Assembly](https://blog.blackwood.cv/posts/gpu-ai-perf-assembly/)
+  - Direct blog values marked `(Official)`; estimated values from known ratios marked `(Est.)`
+  - Unsupported formats displayed as "不支持", unknown as "未知"
+  - Toggle on/off via Settings → GPU Monitor → GPU Specs
+
+- **PCI ID database**: Added `web/gpu_specs.json` with 96 card entries (74 PCI IDs) covering NVIDIA Pascal through Blackwell, AMD RDNA 1.0–4.0, Intel Arc A/B-series.
+  - PCI ID verified from PCI ID Repository / DeviceHunt / linux-hardware.org
+  - Multi-entry support for shared PCI IDs (AMD Navi chips with multiple SKUs)
+  - Name-based fallback matching for cards without known PCI IDs
+
+#### 🔧 Improvements
+
+- **Backend PCI ID**: Added `pci_id` field to `GPUSnapshot` — each provider reads the PCI device ID via its native API:
+  - Intel: Level Zero properties struct or `[0x...]` regex from device name
+  - NVIDIA: `nvmlDeviceGetPciInfo().pciDeviceId & 0xFFFF`
+  - AMD: `rocm_smi.getPciId(0)`
+- **PRED label shortened**: "预测工作流执行成功率" → "预测成功率"
+- **GPU specs database**: Served via `/xpusys/specs` HTTP endpoint with in-memory cache
+
+---
+
 ### v1.0.3 — 2026-05-14
 
 #### 🐛 Bug Fixes
@@ -100,7 +128,31 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 
 ## 中文
 
-### v1.0.3 — 2026-05-14
+### v1.0.4 — 2026-07-04
+
+#### ✨ 新功能
+
+- **GPU 规格胶囊（SPEC）**：新增第 5 个 GPU 胶囊，展示 NVIDIA、AMD、Intel Arc 显卡的理论算力与带宽规格。
+  - 胶囊显示：`SPEC FP16 xxxT xxxGB/s`（蓝色高亮）
+  - Hover 浮层展开完整规格表：显存、带宽、TGP、FP32、FP16、BF16、FP8、FP4、INT8、INT4，按架构标注格式支持矩阵
+  - 数据来源：[Blackwood's Blog - GPU AI Perf Assembly](https://blog.blackwood.cv/posts/gpu-ai-perf-assembly/)
+  - 博客直接数据标注 `(官方)`；通过已知比率推算的标注 `(推测)`
+  - 不支持的格式显示"不支持"，未知的显示"未知"
+  - 可在设置 → 显卡监控 → GPU规格 中开关
+
+- **PCI ID 数据库**：新增 `web/gpu_specs.json`，收录 96 个卡条目（74 个 PCI ID），覆盖 NVIDIA Pascal~Blackwell、AMD RDNA 1.0~4.0、Intel Arc A/B 全系。
+  - PCI ID 来源：PCI ID Repository / DeviceHunt / linux-hardware.org 验证
+  - 共享 PCI ID 支持多条匹配（AMD Navi 芯片多 SKU）
+  - 未知 PCI ID 的卡通过名称模糊匹配兜底
+
+#### 🔧 改进
+
+- **后端 PCI ID**：`GPUSnapshot` 新增 `pci_id` 字段，各家 provider 通过原生 API 读取：
+  - Intel：从 Level Zero properties 结构体或 device_name 中的 `[0x...]` 提取
+  - NVIDIA：`nvmlDeviceGetPciInfo().pciDeviceId & 0xFFFF`
+  - AMD：`rocm_smi.getPciId(0)`
+- **PRED 标签缩短**："预测工作流执行成功率" → "预测成功率"
+- **GPU 规格数据库**：通过 `/xpusys/specs` HTTP 端点提供，内存缓存
 
 #### 🐛 Bug 修复
 
