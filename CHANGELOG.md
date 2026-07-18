@@ -6,6 +6,25 @@
 
 ## English
 
+### v1.0.5 — 2026-07-18
+
+#### 🐛 Bug Fixes
+
+- **GPU frequency reading fixed**: The GPU clock display was showing incorrect values (~1000 MHz) on Intel Arc B580 due to wrong `zes_freq_state_t` field offsets in the Level Zero Sysman ctypes code.
+  - Root cause: Code was reading 4 fields at offsets +16/+24/+32/+40 but labeled them incorrectly.
+  - Actual struct layout (verified via pyzes.py v0.1.2): `currentVoltage@+16 | request@+24 | tdp@+32 | efficient@+40 | actual@+48`
+  - What changed: Now reads 5 fields at their correct offsets. The `actual` field (offset 48) is the **real resolved frequency** — confirmed to match Intel's own monitoring tool exactly:
+    - Idle: 400 MHz  ·  Under load: 2850 MHz (Arc B580)
+  - The old strategy was picking the driver target P-state (`request` field, e.g., 4250 MHz), which is not the actual running clock.
+  - Removed the now-unnecessary `_norm()` unit-conversion helper.
+  - Affects Intel Arc discrete GPUs (B580, A770, etc.) and likely iGPUs (B390/Lunar Lake). Tested on B580.
+
+#### 🔧 Improvements
+
+- **Voltage read unlocked**: `read_gpu_freq_mhz()` now also reads the `currentVoltage` field from Level Zero (not shown in UI, but available for future use).
+
+---
+
 ### v1.0.4 — 2026-07-04
 
 #### ✨ New Features
@@ -127,6 +146,23 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.5 — 2026-07-18
+
+#### 🐛 Bug 修复
+
+- **GPU 频率显示修复**：Intel Arc B580 上 GPU 频率显示不正确（~1000 MHz），原因是 Level Zero Sysman ctypes 代码中 `zes_freq_state_t` 字段偏移量错误。
+  - 根本原因：代码在 +16/+24/+32/+40 偏移处读了 4 个 `c_double` 字段，但标注错误。
+  - 真实结构（经 pyzes.py v0.1.2 验证）：`currentVoltage@+16 | request@+24 | tdp@+32 | efficient@+40 | actual@+48`
+  - 修正内容：现在按正确偏移读取 5 个字段。`actual`（偏移 +48）是 **实际决议频率**，与 Intel 官方监视器数值完全吻合：
+    - 待机：400 MHz  ·  满载：2850 MHz（Arc B580）
+  - 旧策略选择了驱动目标 P-state（`request` 字段，如 4250 MHz），并不是实际运行时钟。
+  - 移除了不再需要的 `_norm()` 单位转换辅助函数。
+  - 影响范围：Intel Arc 独显（B580、A770 等）及可能受影响核显（B390/Lunar Lake）。已在 B580 上测试验证。
+
+#### 🔧 改进
+
+- **电压数据支持**：`read_gpu_freq_mhz()` 现在同时读取 `currentVoltage` 字段（尚未在前端展示，预留给未来使用）。
 
 ### v1.0.4 — 2026-07-04
 

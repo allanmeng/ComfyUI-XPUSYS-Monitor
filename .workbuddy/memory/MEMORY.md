@@ -65,3 +65,21 @@
 - Intel Mac + NVIDIA：完整支持（同 Windows NV）
 - 尚未实现，讨论阶段
 
+## zes_freq_state_t 字段布局（2026-07-18 重要修正）
+- Level Zero `zes_freq_state_t` 真实结构（pyzes.py 验证）：
+  - +0 stype (4B) / +4 pad / +8 pNext (8B)
+  - +16 currentVoltage (V) ⚠️ 电压不是频率
+  - +24 request (MHz) — driver 目标 P-state
+  - +32 tdp (MHz) — TDP 上限（不变）
+  - +40 efficient (MHz) — 高效下限（不变）
+  - +48 actual (MHz) ✅ **真实运行频率**
+- 旧代码 (read_gpu_freq_mhz) 错把 4 个字段全当成频率读，且用了错的 offset，
+  导致 B580 满载时显示 ~1000 MHz 而不是真正的 2850
+- B580 实测值（vs Intel 自家监视器）：
+  - 待机：act=400, volt=0.73, Intel 显示 440
+  - 满载：act=2850, volt=1.025, Intel 显示 2850
+- `request` 在 B580 满载时是 4250（驱动目标，硬件 cap 在 2850），不能用
+- 修正后选 `actual` 优先 → `request` → `tdp`
+- 修正前对 `actual` 误判为"frozen at 400"，实际是合法的节能频率
+
+

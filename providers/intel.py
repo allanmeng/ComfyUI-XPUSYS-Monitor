@@ -493,21 +493,22 @@ class _LevelZeroSysman:
     def read_gpu_freq_mhz(self) -> float:
         """Return current GPU core frequency in MHz via zesFrequencyGetState.
 
-        zes_freq_state_t field offsets (standard Level Zero spec, 64-bit):
-          +16 request   +24 tdp   +32 efficient   +40 actual
+        zes_freq_state_t field offsets (Level Zero spec, verified from pyzes.py):
+          +16 currentVoltage (V)
+          +24 request        (MHz) — driver target P-state
+          +32 tdp            (MHz) — max freq under current TDP
+          +40 efficient      (MHz) — efficient minimum
+          +48 actual         (MHz) — RESOLVED real running clock ✅
 
-        Intel Arc Battlemage (B580) driver quirk — observed behaviour:
-          • offset 40 (actual) is frozen at the hardware minimum (~400 MHz) and
-            is NOT the real running clock.
-          • offset 16 (request) returns the real clock in GHz (e.g. 0.7 = 700 MHz,
-            1.0 = 1000 MHz) — confirmed from live inference data.
-          • offset 32 (efficient) reflects the current thermal-ceiling boost freq
-            (e.g. 2700–2850 MHz).
-
-        Selection strategy — tries each candidate after unit normalization:
-          1. actual   (offset 40) — use if in valid MHz range and NOT frozen at floor
-          2. request  (offset 16) — most reliable on B580; convert GHz→MHz if < 10
-          3. efficient(offset 32) — thermal ceiling; last resort
+        Confirmed vs Intel's own monitoring tool (2026-07-18):
+          • offset 48 (actual) IS the real clock:
+              - B580 idle  = 400 MHz
+              - B580 load  = 2850 MHz (matches Intel tool exactly)
+          • offset 24 (request) is the driver target, can be higher than actual
+              - B580 load = 4250 (target, but hardware caps at 2850)
+          • offset 32 (tdp) is the TDP ceiling (constant 2850 on B580)
+          • offset 16 (currentVoltage) is in Volts (1.025V load / 0.730V idle)
+          • offset 40 (efficient) is a constant low floor (400 on B580)
         """
         if not self._available or self._lib is None:
             return 0.0
@@ -526,46 +527,43 @@ class _LevelZeroSysman:
         # Frequencies at or below this threshold are considered "floor/frozen"
         _FLOOR_MHZ = 410.0   # B580 hw minimum is ~400 MHz
 
-        def _norm(val: float) -> float:
-            """Normalise raw driver value to MHz regardless of unit."""
-            if val <= 0:
-                return 0.0
-            if val > 1_000_000:      # Hz → MHz
-                return val / 1_000_000.0
-            if val > 10_000:         # kHz → MHz
-                return val / 1_000.0
-            if val < 10:             # GHz → MHz  (B580 driver quirk: request field in GHz)
-                return val * 1_000.0
-            return val               # already MHz
-
         def _query_one(handle, can_ctrl, idx):
-            """Returns (ret, request_mhz, tdp_mhz, efficient_mhz, actual_mhz)."""
-            buf = (ctypes.c_uint8 * 64)()
+            """Returns (ret, voltage, request, tdp, efficient, actual)."""
+            buf = (ctypes.c_uint8 * 80)()
             ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0] = _ZES_STYPE_FREQ_STATE
             ret = fn(handle, buf)
             if ret != ZE_RESULT_SUCCESS:
-                return ret, 0.0, 0.0, 0.0, 0.0
+                return ret, 0.0, 0.0, 0.0, 0.0, 0.0
             a = ctypes.addressof(buf)
             return (
                 ret,
-                _norm(ctypes.cast(a + 16, ctypes.POINTER(ctypes.c_double))[0]),  # request
-                _norm(ctypes.cast(a + 24, ctypes.POINTER(ctypes.c_double))[0]),  # tdp
-                _norm(ctypes.cast(a + 32, ctypes.POINTER(ctypes.c_double))[0]),  # efficient
-                _norm(ctypes.cast(a + 40, ctypes.POINTER(ctypes.c_double))[0]),  # actual
+                ctypes.cast(a + 16, ctypes.POINTER(ctypes.c_double))[0],  # currentVoltage (V)
+                ctypes.cast(a + 24, ctypes.POINTER(ctypes.c_double))[0],  # request (MHz)
+                ctypes.cast(a + 32, ctypes.POINTER(ctypes.c_double))[0],  # tdp (MHz)
+                ctypes.cast(a + 40, ctypes.POINTER(ctypes.c_double))[0],  # efficient (MHz)
+                ctypes.cast(a + 48, ctypes.POINTER(ctypes.c_double))[0],  # actual (MHz) — real clock
             )
 
-        def _pick_best(r_req, r_tdp, r_eff, r_act) -> float:
-            """Choose the most trustworthy frequency value from the four fields."""
-            # 1. actual — use only if it's above the floor (not frozen)
-            if _FLOOR_MHZ < r_act <= _MAX_VALID:
+        def _pick_best(r_volt, r_req, r_tdp, r_eff, r_act) -> float:
+            """Choose the most trustworthy frequency value from the five freq fields.
+
+            Struct (verified from pyzes.py):
+              +16 currentVoltage  +24 request  +32 tdp  +40 efficient  +48 actual
+
+            Selection strategy (confirmed vs Intel's own tool 2026-07-18):
+              1. actual (offset 48) — REAL resolved frequency
+                 • idle: 400 MHz (power saving, real value)
+                 • load: 2850 MHz on B580 (matches Intel tool exactly)
+              2. request (offset 24) — driver target P-state, can exceed real clock
+              3. tdp (offset 32) — TDP ceiling, last-resort fallback
+            """
+            # 1. actual — REAL resolved frequency (B580 verified: 400 idle / 2850 load)
+            if _MIN_VALID <= r_act <= _MAX_VALID:
                 return r_act
-            # 2. request — reliable on B580 (contains real clock in GHz)
+            # 2. request — driver target, can be higher than real (B580: 4250 load)
             if _MIN_VALID <= r_req <= _MAX_VALID:
                 return r_req
-            # 3. efficient — thermal ceiling; a proxy when everything else fails
-            if _MIN_VALID <= r_eff <= _MAX_VALID:
-                return r_eff
-            # 4. tdp field — last resort
+            # 3. tdp — TDP ceiling (constant, only as last resort)
             if _MIN_VALID <= r_tdp <= _MAX_VALID:
                 return r_tdp
             return 0.0
@@ -576,11 +574,11 @@ class _LevelZeroSysman:
             stale      = False
 
             for handle, can_ctrl, idx in self._freq_handles:
-                ret, r_req, r_tdp, r_eff, r_act = _query_one(handle, can_ctrl, idx)
+                ret, r_volt, r_req, r_tdp, r_eff, r_act = _query_one(handle, can_ctrl, idx)
                 if ret != ZE_RESULT_SUCCESS:
                     stale = True
                     continue
-                val = _pick_best(r_req, r_tdp, r_eff, r_act)
+                val = _pick_best(r_volt, r_req, r_tdp, r_eff, r_act)
                 # canControl=True domain is authoritative; otherwise take first
                 if (not best_found) or can_ctrl:
                     best_val   = val
@@ -591,10 +589,10 @@ class _LevelZeroSysman:
                 if not self._freq_handles:
                     return 0.0
                 handle, can_ctrl, idx = self._freq_handles[0]
-                ret, r_req, r_tdp, r_eff, r_act = _query_one(handle, can_ctrl, idx)
+                ret, r_volt, r_req, r_tdp, r_eff, r_act = _query_one(handle, can_ctrl, idx)
                 if ret != ZE_RESULT_SUCCESS:
                     return 0.0
-                best_val = _pick_best(r_req, r_tdp, r_eff, r_act)
+                best_val = _pick_best(r_volt, r_req, r_tdp, r_eff, r_act)
 
             return best_val
 
