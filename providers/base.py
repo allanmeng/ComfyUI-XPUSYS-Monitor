@@ -99,6 +99,26 @@ class BaseGPUProvider:
         with self._lock:
             return self._snapshot
 
+    # ------------------------------------------------------------------
+    # Multi-GPU device selection
+    # ------------------------------------------------------------------
+
+    def device_count(self) -> int:
+        """Return the number of GPUs visible to this provider."""
+        return 1
+
+    def get_device_names(self) -> list:
+        """Return a list of GPU display names (one per device index)."""
+        return [self.get_snapshot().device_name] if self.device_count() > 0 else []
+
+    def get_selected_device(self) -> int:
+        """Return the currently selected device index."""
+        return 0
+
+    def select_device(self, index: int) -> bool:
+        """Switch monitoring to another GPU. Return True on success."""
+        return False
+
     def set_interval(self, ms: int) -> None:
         """Adjust polling interval at runtime."""
         self._interval = max(100, ms) / 1000.0

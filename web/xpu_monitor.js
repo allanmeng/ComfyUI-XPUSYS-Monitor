@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.5";
+const VERSION = "1.0.6";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -28,6 +28,7 @@ const S = {
   showRSV:       `${NS}.ShowRSV`,
   showPower:     `${NS}.ShowPower`,
   showSpecs:     `${NS}.ShowSpecs`,
+  gpuIndex:      `${NS}.GPUIndex`,
 };
 
 // Intel Arc PCI device ID → spec TBP (W) — Intel ARK / product pages / NotebookCheck
@@ -136,6 +137,73 @@ function getSetting(id, def) {
   return def;
 }
 
+// ---------------------------------------------------------------------------
+// ComfyUI theme detection — plugin colour scheme follows ComfyUI's theme
+// ---------------------------------------------------------------------------
+// 浅色主题 id 集合：Light + Mike White (Milk White)，其余 (dark/arc/nord/
+// solarized/github 等) 一律视为深色。读取设置值为主，body class 为兜底，
+// 并用 MutationObserver 监听 body class 变化，实现自动跟随。
+const LIGHT_THEME_IDS = new Set(["light", "milk_white", "mikey", "mike-white"]);
+let _curTheme = "dark";          // "dark" | "light"
+let _themeObserver = null;
+
+function detectComfyTheme() {
+  // 1) 优先读 ComfyUI 设置
+  try {
+    const id = app.ui.settings.getSettingValue("Comfy.ColorPalette", "dark");
+    if (typeof id === "string" && id) return LIGHT_THEME_IDS.has(id) ? "light" : "dark";
+  } catch (_) {}
+  // 2) 兜底：body class 是否带浅色主题 id
+  try {
+    const cls = document.body.className || "";
+    for (const id of LIGHT_THEME_IDS) {
+      if (cls.includes(id)) return "light";
+    }
+  } catch (_) {}
+  return "dark";
+}
+
+function applyTheme() {
+  const theme = detectComfyTheme();
+  if (theme !== _curTheme) {
+    _curTheme = theme;
+    // 通知全局 CSS（injectStyles 里的变量都挂在 :root 上）
+    document.documentElement.dataset.xpusysTheme = theme;
+    updateThemeStatusUI();
+  }
+}
+
+function startThemeWatcher() {
+  applyTheme();                      // 初始化
+  // body class 变化（ComfyUI 切主题时会 add/remove 主题 id class）
+  try {
+    _themeObserver = new MutationObserver(applyTheme);
+    _themeObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  } catch (_) {}
+  // 兜底轮询（设置变化不一定改 body class）
+  setInterval(applyTheme, 2000);
+}
+
+// 设置面板中的只读主题状态显示
+let _themeStatusEl = null;
+function updateThemeStatusUI() {
+  if (!_themeStatusEl) return;
+  try {
+    const comfyId = app.ui.settings.getSettingValue("Comfy.ColorPalette", "dark") || "dark";
+    const isLight = _curTheme === "light";
+    const label   = isLight ? t("浅色", "Light") : t("深色", "Dark");
+    _themeStatusEl.innerHTML =
+      `<span style="display:inline-flex;align-items:center;gap:6px;font-size:14px;">` +
+      `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;` +
+      `background:${isLight ? "#f5f5f5" : "#2a2a2a"};` +
+      `border:1px solid ${isLight ? "#999" : "#555"};"></span>` +
+      `${t("跟随 ComfyUI 主题：", "Follows ComfyUI theme: ")}` +
+      `<b style="color:${isLight ? "#333" : "#ccc"}">${label}</b>` +
+      ` <span style="color:var(--xpusys-text-faint);font-size:12px;">(${comfyId})</span>` +
+      `</span>`;
+  } catch (_) {}
+}
+
 function en() {
   const manual = getSetting(S.lang, "system");
   if (manual === "en") return true;
@@ -164,7 +232,7 @@ function makeSliderType(min, max, step, liveUpdate = false) {
     box.type = "number"; box.min = min; box.max = max; box.step = step;
     box.value = value ?? min;
     box.style.cssText = "width:62px;padding:2px 4px;background:transparent;" +
-                        "border:1px solid #555;border-radius:3px;color:inherit;" +
+                        "border:1px solid var(--xpusys-tooltip-border);border-radius:3px;color:inherit;" +
                         "text-align:center;font-size:inherit;";
 
     slider.addEventListener("input", () => {
@@ -192,8 +260,8 @@ function makeSliderType(min, max, step, liveUpdate = false) {
 function makeLangSelectType() {
   return (_name, setter, value) => {
     const sel = document.createElement("select");
-    sel.style.cssText = "background:#2a2a2a;border:1px solid #555;border-radius:4px;" +
-                        "color:inherit;padding:3px 8px;font-size:inherit;cursor:pointer;";
+    sel.style.cssText = "background:var(--xpusys-capsule-bg);border:1px solid var(--xpusys-tooltip-border);" +
+                        "border-radius:4px;color:inherit;padding:3px 8px;font-size:inherit;cursor:pointer;";
     const opts = [
       { label: "系统", value: "system" },
       { label: "中文", value: "zh" },
@@ -213,6 +281,51 @@ function makeLangSelectType() {
   };
 }
 
+// GPU 选择下拉：列出后端可见的显卡，切换后调用 /xpusys/select
+function makeGPUIndexType() {
+  let deviceList = [];      // [{index, name}]
+  let sel = null;
+  async function refreshOptions(currentVal) {
+    try {
+      const r = await api.fetchApi("/xpusys/devices");
+      if (r.ok) {
+        const data = await r.json();
+        deviceList = data.devices || [];
+        if (deviceList.length === 0) deviceList = [{ index: 0, name: "GPU0" }];
+        // 后端返回的当前选中优先于设置里存的值
+        const cur = (data.selected != null) ? data.selected : (currentVal ?? 0);
+        sel.innerHTML = "";
+        deviceList.forEach(d => {
+          const opt = document.createElement("option");
+          opt.value = String(d.index);
+          opt.textContent = `${t("GPU", "GPU")}${d.index} · ${d.name}`;
+          if (String(d.index) === String(cur)) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      }
+    } catch (_) {}
+  }
+  return (_name, setter, value) => {
+    sel = document.createElement("select");
+    sel.style.cssText = "background:var(--xpusys-capsule-bg);border:1px solid var(--xpusys-tooltip-border);" +
+                        "border-radius:4px;color:inherit;padding:3px 8px;font-size:inherit;cursor:pointer;";
+    refreshOptions(value);
+    sel.addEventListener("change", async () => {
+      const idx = Number(sel.value);
+      setter(idx);
+      try {
+        const r = await api.fetchApi("/xpusys/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ index: idx }),
+        });
+        if (r.ok) pollOnce();     // 立即刷新数据
+      } catch (_) {}
+    });
+    return sel;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // CSS
 // ---------------------------------------------------------------------------
@@ -220,6 +333,73 @@ function makeLangSelectType() {
 function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
+    /* ══ 主题变量（深色为默认；浅色由 html[data-xpusys-theme=light] 覆盖）══ */
+    :root {
+      --xpusys-capsule-bg:      rgba(255,255,255,0.05);   /* 胶囊底 */
+      --xpusys-capsule-border:  rgba(255,255,255,0.08);   /* 胶囊边框 */
+      --xpusys-capsule-hover:   rgba(255,255,255,0.08);   /* 胶囊 hover */
+      --xpusys-capsule-divider: rgba(255,255,255,0.10);   /* 胶囊内分隔线 */
+      --xpusys-specs-bg:        rgba(54,207,201,0.10);    /* PRED 胶囊底 */
+      --xpusys-specs-border:    rgba(54,207,201,0.22);    /* PRED 胶囊边框 */
+      --xpusys-specs-hover:     rgba(54,207,201,0.18);    /* PRED hover */
+      --xpusys-text:            #e8e8e8;                  /* 主文字 */
+      --xpusys-text-dim:        #888;                     /* 次要文字 */
+      --xpusys-text-faint:      #666;                     /* 更次要文字 */
+      --xpusys-na:              #555;                     /* N/A / 不可用 */
+      --xpusys-tooltip-bg:      rgba(18,18,24,0.97);      /* 浮层底 */
+      --xpusys-tooltip-border:  rgba(255,255,255,0.15);   /* 浮层边框 */
+      --xpusys-tooltip-text:    #ccc;                     /* 浮层文字 */
+      --xpusys-tooltip-title:   #fff;                     /* 浮层标题 */
+      --xpusys-tooltip-key:     #888;                     /* 浮层键名 */
+      --xpusys-tooltip-val:     #e8e8e8;                  /* 浮层值 */
+      --xpusys-tooltip-note:    #666;                     /* 浮层注脚 */
+      --xpusys-ok:       #52c41a;   --xpusys-ok-dim:  #52c41a;
+      --xpusys-warn:     #faad14;   --xpusys-warn-dim:#faad14;
+      --xpusys-crit:     #ff4d4f;   --xpusys-crit-dim:#ff4d4f;
+      --xpusys-cyan:     #36cfc9;   --xpusys-cyan-dim:#36cfc9;
+      --xpusys-purple:   #b37feb;   --xpusys-purple-dim:#b37feb;
+      --xpusys-blue:     #597ef7;   --xpusys-blue-dim:#597ef7;
+      --xpusys-orange:   #ff7a00;
+      --xpusys-lime:     #afff00;   /* PRED 安全标签 */
+      --xpusys-shadow:   -2px -2px 5px rgba(255,255,255,0.03),
+                         2px 2px 6px rgba(0,0,0,0.5);
+      --xpusys-shadow-hover: -2px -2px 5px rgba(255,255,255,0.05),
+                             2px 2px 6px rgba(0,0,0,0.6);
+      --xpusys-shadow-tip: 0 4px 16px rgba(0,0,0,0.6);
+    }
+    html[data-xpusys-theme="light"] {
+      --xpusys-capsule-bg:      rgba(0,0,0,0.04);
+      --xpusys-capsule-border:  rgba(0,0,0,0.12);
+      --xpusys-capsule-hover:   rgba(0,0,0,0.08);
+      --xpusys-capsule-divider: rgba(0,0,0,0.12);
+      --xpusys-specs-bg:        rgba(54,207,201,0.14);
+      --xpusys-specs-border:    rgba(54,207,201,0.35);
+      --xpusys-specs-hover:     rgba(54,207,201,0.25);
+      --xpusys-text:            #333;
+      --xpusys-text-dim:        #666;
+      --xpusys-text-faint:      #888;
+      --xpusys-na:              #999;
+      --xpusys-tooltip-bg:      rgba(255,255,255,0.98);
+      --xpusys-tooltip-border:  rgba(0,0,0,0.15);
+      --xpusys-tooltip-text:    #444;
+      --xpusys-tooltip-title:   #111;
+      --xpusys-tooltip-key:     #777;
+      --xpusys-tooltip-val:     #222;
+      --xpusys-tooltip-note:    #999;
+      --xpusys-ok:       #389e0d;   --xpusys-ok-dim:  #237804;
+      --xpusys-warn:     #d48806;   --xpusys-warn-dim:#ad6800;
+      --xpusys-crit:     #cf1322;   --xpusys-crit-dim:#a8071a;
+      --xpusys-cyan:     #08979c;   --xpusys-cyan-dim:#006d75;
+      --xpusys-purple:   #9254de;   --xpusys-purple-dim:#722ed1;
+      --xpusys-blue:     #2f54eb;   --xpusys-blue-dim:#1d39c4;
+      --xpusys-orange:   #d46b08;
+      --xpusys-lime:     #7cb305;   /* PRED 安全标签（浅色加深保证可读） */
+      --xpusys-shadow:   -2px -2px 5px rgba(255,255,255,0.6),
+                         2px 2px 6px rgba(0,0,0,0.12);
+      --xpusys-shadow-hover: -2px -2px 5px rgba(255,255,255,0.8),
+                             2px 2px 6px rgba(0,0,0,0.18);
+      --xpusys-shadow-tip: 0 4px 16px rgba(0,0,0,0.18);
+    }
     .xpu-monitor-bar {
       font-family: 'Consolas', 'JetBrains Mono', 'Cascadia Code', 'PingFang SC', 'Microsoft YaHei', monospace;
       font-size: var(--xpusys-fs, 18px);
@@ -262,23 +442,19 @@ function injectStyles() {
       font-size: var(--xpusys-fs, 18px);   /* 直接读变量，与 bar 联动 */
       line-height: 1;                       /* 防止中文字体默认行高撑高胶囊 */
       font-variant-numeric: tabular-nums;
-      background: rgba(54, 207, 201, 0.10);
-      border: 1px solid rgba(54, 207, 201, 0.22);
+      background: var(--xpusys-specs-bg);
+      border: 1px solid var(--xpusys-specs-border);
       border-radius: 8px;
       padding: 10px 0.6em;
       margin: 0 2px;
       cursor: default;
       position: relative;
       transition: background 0.15s, box-shadow 0.15s;
-      box-shadow:
-        -2px -2px 5px rgba(255, 255, 255, 0.03),
-        2px 2px 6px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--xpusys-shadow);
     }
     .vram-predictor-section:hover {
-      background: rgba(54, 207, 201, 0.18);
-      box-shadow:
-        -2px -2px 5px rgba(255, 255, 255, 0.05),
-        2px 2px 6px rgba(0, 0, 0, 0.6);
+      background: var(--xpusys-specs-hover);
+      box-shadow: var(--xpusys-shadow-hover);
     }
     /* 中文标签视觉微调：汉字渲染比等宽英文大，缩至 0.85em */
     .pred-zh { font-size: 0.85em; }
@@ -293,42 +469,36 @@ function injectStyles() {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--xpusys-capsule-bg);
+      border: 1px solid var(--xpusys-capsule-border);
       border-radius: 8px;
       padding: 10px 0.6em;
       margin: 0 1.5px;
       cursor: default;
       position: relative;
       transition: background 0.15s, box-shadow 0.15s;
-      box-shadow:
-        -2px -2px 5px rgba(255, 255, 255, 0.03),
-        2px 2px 6px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--xpusys-shadow);
     }
     /* cpu: "CPU"(3) + n-pct(6) + "@"(1) + n-ghz(6) = 16ch */
     .cpu-section { min-width: 16ch; }
     /* ram: "RAM"(3) + n-pct(6) = 9ch */
     .ram-section { min-width: 9ch; }
     .cpu-section:hover, .ram-section:hover {
-      background: rgba(255, 255, 255, 0.08);
-      box-shadow:
-        -2px -2px 5px rgba(255, 255, 255, 0.05),
-        2px 2px 6px rgba(0, 0, 0, 0.6);
+      background: var(--xpusys-capsule-hover);
+      box-shadow: var(--xpusys-shadow-hover);
     }
 
     /* ── GPU 综合体强化 ── */
     .gpu-composite-group {
       display: flex;
       align-items: center;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: var(--xpusys-capsule-bg);
+      border: 1px solid var(--xpusys-capsule-border);
       border-radius: 8px;
       padding: 0 4px;
       margin: 0 1.5px;
       gap: 0;
-      box-shadow:
-        -2px -2px 5px rgba(255, 255, 255, 0.03),
-        2px 2px 6px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--xpusys-shadow);
     }
 
     /* ── GPU 子项 ── */
@@ -337,7 +507,7 @@ function injectStyles() {
       align-items: center;
       justify-content: center;
       padding: 10px 0.6em;
-      border-right: 1px solid rgba(255, 255, 255, 0.10);
+      border-right: 1px solid var(--xpusys-capsule-divider);
       cursor: default;
       position: relative;
       transition: background 0.15s;
@@ -354,55 +524,55 @@ function injectStyles() {
     .gpu-specs  { min-width: 21ch; }
     .gpu-specs { border-right: none; }
     .gpu-engine:hover, .gpu-vram:hover, .gpu-rsv:hover, .gpu-pwr:hover, .gpu-specs:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--xpusys-capsule-hover);
       border-radius: 3px;
     }
 
     .xpusys-value    { font-weight: 600; letter-spacing: 0.02em; }
-    .xpusys-ok       { color: #52c41a; }
-    .xpusys-warn     { color: #faad14; }
-    .xpusys-critical { color: #ff4d4f; }
-    .xpusys-vram-ok  { color: #e8e8e8; }
-    .xpusys-vram-warn{ color: #ff7a00; }
-    .xpusys-vram-crit{ color: #ff4d4f; }
-    .xpusys-pwr-ok   { color: #36cfc9; }
-    .xpusys-pwr-warn { color: #b37feb; }
-    .xpusys-pwr-crit { color: #ff4d4f; }
-    .xpusys-specs-ok { color: #597ef7; }
-    .xpusys-na       { color: #555; }
+    .xpusys-ok       { color: var(--xpusys-ok); }
+    .xpusys-warn     { color: var(--xpusys-warn); }
+    .xpusys-critical { color: var(--xpusys-crit); }
+    .xpusys-vram-ok  { color: var(--xpusys-text); }
+    .xpusys-vram-warn{ color: var(--xpusys-orange); }
+    .xpusys-vram-crit{ color: var(--xpusys-crit); }
+    .xpusys-pwr-ok   { color: var(--xpusys-cyan); }
+    .xpusys-pwr-warn { color: var(--xpusys-purple); }
+    .xpusys-pwr-crit { color: var(--xpusys-crit); }
+    .xpusys-specs-ok { color: var(--xpusys-blue); }
+    .xpusys-na       { color: var(--xpusys-na); }
 
     .xpusys-lock {
-      font-size: 10px; color: #666; cursor: pointer;
-      border: 1px solid #444; border-radius: 3px;
+      font-size: 10px; color: var(--xpusys-text-faint); cursor: pointer;
+      border: 1px solid var(--xpusys-na); border-radius: 3px;
       padding: 0 3px; line-height: 14px; margin-left: 4px;
       transition: color 0.15s, border-color 0.15s;
     }
-    .xpusys-lock:hover { color: #aaa; border-color: #aaa; }
+    .xpusys-lock:hover { color: var(--xpusys-text-dim); border-color: var(--xpusys-text-dim); }
 
     .xpusys-tooltip {
       position: fixed;
-      background: rgba(18,18,24,0.97);
-      border: 1px solid rgba(255,255,255,0.15);
+      background: var(--xpusys-tooltip-bg);
+      border: 1px solid var(--xpusys-tooltip-border);
       border-radius: 6px;
       padding: 8px 12px;
       font-size: 16px;
       font-family: 'JetBrains Mono', monospace;
-      color: #ccc;
+      color: var(--xpusys-tooltip-text);
       line-height: 1.7;
       pointer-events: none;
       z-index: 99999;
       min-width: 220px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      box-shadow: var(--xpusys-shadow-tip);
       white-space: pre;
     }
     .xpusys-tooltip-title {
-      color: #fff; font-weight: 700; font-size: 17px; margin-bottom: 4px;
-      border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 3px;
+      color: var(--xpusys-tooltip-title); font-weight: 700; font-size: 17px; margin-bottom: 4px;
+      border-bottom: 1px solid var(--xpusys-tooltip-border); padding-bottom: 3px;
     }
     .xpusys-tooltip-row { display: flex; justify-content: space-between; gap: 16px; }
-    .xpusys-tooltip-key { color: #888; }
-    .xpusys-tooltip-val { color: #e8e8e8; font-weight: 600; }
-    .xpusys-tooltip-note{ color: #666; font-size: 15px; margin-top: 4px; }
+    .xpusys-tooltip-key { color: var(--xpusys-tooltip-key); }
+    .xpusys-tooltip-val { color: var(--xpusys-tooltip-val); font-weight: 600; }
+    .xpusys-tooltip-note{ color: var(--xpusys-tooltip-note); font-size: 15px; margin-top: 4px; }
   `;
   document.head.appendChild(style);
 }
@@ -484,19 +654,47 @@ function initSpecs() {
 }
 
 function resolveSpec(snap) {
+  // ① PCI ID 精确匹配（优先）
   const entries = GPU_SPECS?.[snap.pci_id];
-  if (!entries) return matchPending(snap);
-  // entries is always an array now — PCI ID → [{ name_match, vendor, ... }, ...]
-  if (entries.length === 1) return entries[0];
-  // Multiple entries for the same PCI ID → filter by name_match
-  if (!snap.device_name) return entries[0];
-  const dn = snap.device_name.toLowerCase();
-  // Try longest name_match first (more specific = better)
-  const sorted = [...entries].sort((a, b) => (b.name_match?.length || 0) - (a.name_match?.length || 0));
-  for (const e of sorted) {
-    if (e.name_match && dn.includes(e.name_match.toLowerCase())) return e;
+  if (entries) {
+    if (entries.length === 1) return entries[0];
+    // Multiple entries for the same PCI ID → filter by name_match
+    if (!snap.device_name) return entries[0];
+    const dn = snap.device_name.toLowerCase();
+    const sorted = [...entries].sort((a, b) => (b.name_match?.length || 0) - (a.name_match?.length || 0));
+    for (const e of sorted) {
+      if (e.name_match && dn.includes(e.name_match.toLowerCase())) return e;
+    }
+    return entries[0]; // fallback
   }
-  return entries[0]; // fallback
+  // ② 名称兜底：整个 cards 表按 device_name 模糊匹配
+  //    （某些驱动 device_name 无 [0x...] 后缀导致 pci_id 读不到，如部分 A770）
+  const byName = matchSpecByName(snap);
+  if (byName) return byName;
+  // ③ 最后：pending 表（暂无 PCI ID 的卡）
+  return matchPending(snap);
+}
+
+// 在整个 cards 表里按 device_name 子串匹配（不依赖 pci_id）
+function matchSpecByName(snap) {
+  if (!GPU_SPECS || !snap.device_name) return null;
+  const dn = snap.device_name.toLowerCase();
+  let best = null, bestLen = 0;
+  for (const id of Object.keys(GPU_SPECS)) {
+    const arr = GPU_SPECS[id];
+    for (const e of arr) {
+      const nm = e.name_match || e.name || "";
+      const key = nm.toLowerCase();
+      if (key && dn.includes(key)) {
+        // 取最长匹配（更精确）
+        if (key.length > bestLen) {
+          bestLen = key.length;
+          best = e;
+        }
+      }
+    }
+  }
+  return best;
 }
 
 function matchPending(snap) {
@@ -778,13 +976,13 @@ function calcPrediction(mTotal, mPeak, snap) {
 
   let color, label;
   if (rate >= 95) {
-    color = "#52c41a"; label = { zh: "轻松",   en: "Smooth"   };
+    color = "var(--xpusys-ok)"; label = { zh: "轻松",   en: "Smooth"   };
   } else if (rate >= 80) {
-    color = "#afff00"; label = { zh: "安全",   en: "Safe"     };
+    color = "var(--xpusys-lime)"; label = { zh: "安全",   en: "Safe"     };
   } else if (rate >= 40) {
-    color = "#faad14"; label = { zh: "预警",   en: "Warning"  };
+    color = "var(--xpusys-warn)"; label = { zh: "预警",   en: "Warning"  };
   } else {
-    color = "#ff4d4f"; label = { zh: "危险",   en: "Critical" };
+    color = "var(--xpusys-crit)"; label = { zh: "危险",   en: "Critical" };
   }
 
   return { rate, color, label, dPeak, dLoad, vEff, cRam, sVirt, pPeak, pLoad, gamma, gpuVendor };
@@ -830,7 +1028,7 @@ function showTip(key, snap) {
 function buildCPUTip(snap, eng) {
   const pct  = snap.cpu_pct      ?? 0;
   const freq = snap.cpu_freq_ghz ?? 0;
-  const c    = pct > 80 ? "#ff4d4f" : pct > 50 ? "#faad14" : "#52c41a";
+  const c    = pct > 80 ? "var(--xpusys-crit)" : pct > 50 ? "var(--xpusys-warn)" : "var(--xpusys-ok)";
   if (eng) {
     return tipTitle("🖥️ CPU")
       + tipRow("Utilisation", pct.toFixed(1) + " %", c)
@@ -854,7 +1052,7 @@ function buildRAMTip(snap, eng) {
   const free        = snap.ram_free_gb      ?? 0;
   const commitUsed  = snap.commit_used_gb   ?? 0;
   const commitLimit = snap.commit_limit_gb  ?? 0;
-  const c     = pct > 90 ? "#ff4d4f" : pct > 70 ? "#faad14" : "#52c41a";
+  const c     = pct > 90 ? "var(--xpusys-crit)" : pct > 70 ? "var(--xpusys-warn)" : "var(--xpusys-ok)";
   const commitStr = commitLimit > 0
     ? `${commitUsed.toFixed(1)} / ${commitLimit.toFixed(1)} GB`
     : `${commitUsed.toFixed(1)} GB`;
@@ -862,15 +1060,15 @@ function buildRAMTip(snap, eng) {
     return tipTitle("💾 System RAM")
       + tipRow("Total",   total.toFixed(1) + " GB")
       + tipRow("Used",    used.toFixed(1)  + " GB", c)
-      + tipRow("Free",    free.toFixed(1)  + " GB", "#52c41a")
-      + (commitUsed > 0 ? tipRow("Commit", commitStr, "#b37feb") : "")
+      + tipRow("Free",    free.toFixed(1)  + " GB", "var(--xpusys-ok)")
+      + (commitUsed > 0 ? tipRow("Commit", commitStr, "var(--xpusys-purple)") : "")
       + tipNote("Source: psutil · virtual_memory\nCommit: GlobalMemoryStatusEx");
   }
   return tipTitle("💾 系统内存")
     + tipRow("总量",   total.toFixed(1) + " GB")
     + tipRow("已用",   used.toFixed(1)  + " GB", c)
-    + tipRow("空闲",   free.toFixed(1)  + " GB", "#52c41a")
-    + (commitUsed > 0 ? tipRow("虚拟内存", commitStr, "#b37feb") : "")
+    + tipRow("空闲",   free.toFixed(1)  + " GB", "var(--xpusys-ok)")
+    + (commitUsed > 0 ? tipRow("虚拟内存", commitStr, "var(--xpusys-purple)") : "")
     + tipNote("来源: psutil · virtual_memory\n虚拟内存: GlobalMemoryStatusEx");
 }
 
@@ -878,8 +1076,8 @@ function buildEngineTip(snap, eng) {
   const load = snap.gpu_load_pct ?? 0;
   const freq = snap.gpu_freq_mhz ?? 0;
   const temp = snap.gpu_temp_c   ?? -1;
-  const c    = load > 95 ? "#ff4d4f" : load > 80 ? "#faad14" : "#52c41a";
-  const tc   = temp > 85 ? "#ff4d4f" : temp > 70 ? "#faad14" : "#36cfc9";
+  const c    = load > 95 ? "var(--xpusys-crit)" : load > 80 ? "var(--xpusys-warn)" : "var(--xpusys-ok)";
+  const tc   = temp > 85 ? "var(--xpusys-crit)" : temp > 70 ? "var(--xpusys-warn)" : "var(--xpusys-cyan)";
   if (eng) {
     return tipTitle("📊 GPU Engine")
       + tipRow("Load",  load.toFixed(1) + " %", c)
@@ -906,26 +1104,26 @@ function buildVRAMTip(snap, eng) {
   const sysEnv = Math.max(0, used  - rsv);
   const buf    = Math.max(0, rsv   - alloc);
   const pct    = total > 0 ? used / total : 0;
-  const c      = pct > 0.95 ? "#ff4d4f" : pct > 0.85 ? "#ff7a00" : "#e8e8e8";
+  const c      = pct > 0.95 ? "var(--xpusys-crit)" : pct > 0.85 ? "var(--xpusys-orange)" : "var(--xpusys-text)";
   // 统一用 GB（2位小数）显示，与 bar 上的 toFixed(1) 对齐，避免 MB÷1000 的心算误差
   const g2     = gb => gb.toFixed(2) + " GB";
   if (eng) {
     return tipTitle("🧠 VRAM Breakdown")
       + tipRow("Total",             g2(total))
       + tipRow("Current Used",      g2(used),   c)
-      + tipRow("  System & Env (display & driver)",     g2(sysEnv), "#888")
-      + tipRow("  Model & Compute (loaded model)",      g2(alloc),  "#36cfc9")
-      + tipRow("  Reserved Buffer (PyTorch pre-alloc)", g2(buf),    "#b37feb")
-      + tipRow("Free",              g2(free),   "#52c41a")
+      + tipRow("  System & Env (display & driver)",     g2(sysEnv), "var(--xpusys-text-dim)")
+      + tipRow("  Model & Compute (loaded model)",      g2(alloc),  "var(--xpusys-cyan)")
+      + tipRow("  Reserved Buffer (PyTorch pre-alloc)", g2(buf),    "var(--xpusys-purple)")
+      + tipRow("Free",              g2(free),   "var(--xpusys-ok)")
       + tipNote("Source: zesMemoryGetState / torch.xpu.memory_allocated / memory_reserved");
   }
   return tipTitle("🧠 显存详情")
     + tipRow("总量",       g2(total))
     + tipRow("当前占用",   g2(used),   c)
-    + tipRow("  系统与环境 (系统显示及驱动占用)",           g2(sysEnv), "#888")
-    + tipRow("  模型与计算 (当前加载模型与实时运算)",       g2(alloc),  "#36cfc9")
-    + tipRow("  预留缓冲区 (PyTorch 预先霸占的待分配空间)", g2(buf),    "#b37feb")
-    + tipRow("空闲",       g2(free),   "#52c41a")
+    + tipRow("  系统与环境 (系统显示及驱动占用)",           g2(sysEnv), "var(--xpusys-text-dim)")
+    + tipRow("  模型与计算 (当前加载模型与实时运算)",       g2(alloc),  "var(--xpusys-cyan)")
+    + tipRow("  预留缓冲区 (PyTorch 预先霸占的待分配空间)", g2(buf),    "var(--xpusys-purple)")
+    + tipRow("空闲",       g2(free),   "var(--xpusys-ok)")
     + tipNote("来源: zesMemoryGetState / torch.xpu.memory_allocated / memory_reserved");
 }
 
@@ -935,15 +1133,15 @@ function buildRSVTip(snap, eng) {
   const buf   = Math.max(0, rsv - alloc);
   if (eng) {
     return tipTitle("💾 Reserved (PyTorch Cache)")
-      + tipRow("Cache Pool",  (rsv   * 1024).toFixed(0) + " MB", "#b37feb")
-      + tipRow("  In Use",    (alloc * 1024).toFixed(0) + " MB", "#36cfc9")
-      + tipRow("  Free Buf",  (buf   * 1024).toFixed(0) + " MB", "#888")
+      + tipRow("Cache Pool",  (rsv   * 1024).toFixed(0) + " MB", "var(--xpusys-purple)")
+      + tipRow("  In Use",    (alloc * 1024).toFixed(0) + " MB", "var(--xpusys-cyan)")
+      + tipRow("  Free Buf",  (buf   * 1024).toFixed(0) + " MB", "var(--xpusys-text-dim)")
       + tipNote("Source: torch.xpu.memory_reserved()");
   }
   return tipTitle("💾 PyTorch 缓存池")
-    + tipRow("缓存总量",   (rsv   * 1024).toFixed(0) + " MB", "#b37feb")
-    + tipRow("  实际占用", (alloc * 1024).toFixed(0) + " MB", "#36cfc9")
-    + tipRow("  空闲缓存", (buf   * 1024).toFixed(0) + " MB", "#888")
+    + tipRow("缓存总量",   (rsv   * 1024).toFixed(0) + " MB", "var(--xpusys-purple)")
+    + tipRow("  实际占用", (alloc * 1024).toFixed(0) + " MB", "var(--xpusys-cyan)")
+    + tipRow("  空闲缓存", (buf   * 1024).toFixed(0) + " MB", "var(--xpusys-text-dim)")
     + tipNote("来源: torch.xpu.memory_reserved()");
 }
 
@@ -962,21 +1160,21 @@ function buildPWRTip(snap, eng) {
   const tgp = resolveTGP(snap);
   const dev = shortDeviceName(snap.device_name);
   const pct = tgp > 0 ? snap.power_w / tgp : 0;
-  const c   = (tgp > 0 && pct > 0.95) ? "#ff4d4f"
-            : (tgp > 0 && pct > 0.80) ? "#b37feb"
-            : snap.power_w > 170       ? "#ff4d4f"
-            : snap.power_w > 120       ? "#b37feb"
-            : "#36cfc9";
+  const c   = (tgp > 0 && pct > 0.95) ? "var(--xpusys-crit)"
+            : (tgp > 0 && pct > 0.80) ? "var(--xpusys-purple)"
+            : snap.power_w > 170       ? "var(--xpusys-crit)"
+            : snap.power_w > 120       ? "var(--xpusys-purple)"
+            : "var(--xpusys-cyan)";
   if (eng) {
     let html = tipTitle(`⚡ ${dev} Power`)
       + tipRow("Instant Power", snap.power_w.toFixed(1) + " W", c);
-    if (tgp > 0) html += tipRow("TGP Limit",  tgp.toFixed(0) + " W", "#666")
+    if (tgp > 0) html += tipRow("TGP Limit",  tgp.toFixed(0) + " W", "var(--xpusys-text-faint)")
                        + tipRow("Load Ratio", (pct * 100).toFixed(0) + " %", c);
     return html + tipNote("Source: Intel Level Zero · zesPowerGetEnergyCounter\nAdmin · Dual-sample energy delta");
   }
   let html = tipTitle(`⚡ ${dev} 实时功率`)
     + tipRow("瞬时功率", snap.power_w.toFixed(1) + " W", c);
-  if (tgp > 0) html += tipRow("TGP 上限",  tgp.toFixed(0) + " W", "#666")
+  if (tgp > 0) html += tipRow("TGP 上限",  tgp.toFixed(0) + " W", "var(--xpusys-text-faint)")
                      + tipRow("负载比例", (pct * 100).toFixed(0) + " %", c);
   return html + tipNote("来源: Intel Level Zero · zesPowerGetEnergyCounter\n需要管理员权限 · 双采样能量差值");
 }
@@ -1012,7 +1210,7 @@ function renderSpec(snap) {
 
 function formatRow(label, val, unit, cls) {
   const prefix = label + " ";
-  if (val == null) return tipRow(label, unit, "#555");
+  if (val == null) return tipRow(label, unit, "var(--xpusys-na)");
   const c = cls ? ` style="color:${cls}"` : "";
   return tipRow(label, `<span${c}>${val} ${unit}</span>`);
 }
@@ -1084,16 +1282,16 @@ function buildSpecTip(snap, eng) {
       // FP32: always from blog spec
       if (key === "fp32") {
         if (s.fp32_tflops) html += tipRow("FP32", _fmt(s.fp32_tflops) + " TFLOPS" + (eng ? " (Official)" : " (官方)"));
-        else html += tipRow("FP32", "—", "#555");
+        else html += tipRow("FP32", "—", "var(--xpusys-na)");
         continue;
       }
 
       if (symb === "-") {
-        html += tipRow(disp, "不支持", "#555");
+        html += tipRow(disp, "不支持", "var(--xpusys-na)");
         continue;
       }
       if (symb === "?") {
-        html += tipRow(disp, "未知", "#666");
+        html += tipRow(disp, "未知", "var(--xpusys-text-faint)");
         continue;
       }
 
@@ -1103,10 +1301,10 @@ function buildSpecTip(snap, eng) {
           ? (est.official ? " (Official)" : est.est ? " (Est.)" : "")
           : (est.official ? " (官方)" : est.est ? " (推测)" : "");
         const valStr = _fmt(est.v);
-        const hl = key === "fp16" ? "#597ef7" : null;
+        const hl = key === "fp16" ? "var(--xpusys-blue)" : null;
         html += tipRow(disp, valStr + " " + unit + suffix, hl);
       } else if (symb === "*" || symb === "+" || symb === "=") {
-        html += tipRow(disp, eng ? "Supported" : "支持", "#666");
+        html += tipRow(disp, eng ? "Supported" : "支持", "var(--xpusys-text-faint)");
       }
     }
   }
@@ -1127,28 +1325,28 @@ function buildPredictorTip(snap, eng) {
   const vendorName = pred.gpuVendor === "nvidia" ? "NVIDIA UVM" : "Intel Arc";
   const overflowTol = pred.gamma.toFixed(1) + "x";
   if (eng) {
-    html += tipRow("Overflow Tolerance", overflowTol + " (" + vendorName + ")", "#36cfc9");
-    html += tipRow("Eff. VRAM Cap",      pred.vEff.toFixed(2)  + " GB", "#36cfc9");
-    html += tipRow("Peak Model",         mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "#ff4d4f" : "#52c41a");
-    html += tipRow("  VRAM Gap",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "#faad14" : "#555");
-    html += tipRow("  P_peak",           (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "#faad14" : "#52c41a");
+    html += tipRow("Overflow Tolerance", overflowTol + " (" + vendorName + ")", "var(--xpusys-cyan)");
+    html += tipRow("Eff. VRAM Cap",      pred.vEff.toFixed(2)  + " GB", "var(--xpusys-cyan)");
+    html += tipRow("Peak Model",         mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "var(--xpusys-crit)" : "var(--xpusys-ok)");
+    html += tipRow("  VRAM Gap",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
+    html += tipRow("  P_peak",           (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
     html += tipRow("Total Models",       total.toFixed(2)      + " GB", pred.color);
-    html += tipRow("  Load Gap",         pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "#faad14" : "#555");
-    html += tipRow("  Avail. RAM",       pred.cRam.toFixed(2)  + " GB", "#b37feb");
-    html += tipRow("  Avail. Commit",    pred.sVirt.toFixed(2) + " GB", "#888");
-    html += tipRow("  P_load",           (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "#faad14" : "#52c41a");
+    html += tipRow("  Load Gap",         pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
+    html += tipRow("  Avail. RAM",       pred.cRam.toFixed(2)  + " GB", "var(--xpusys-purple)");
+    html += tipRow("  Avail. Commit",    pred.sVirt.toFixed(2) + " GB", "var(--xpusys-text-dim)");
+    html += tipRow("  P_load",           (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
     html += tipRow("Success Rate",       pred.rate + " %",               pred.color);
   } else {
-    html += tipRow("溢出容忍",           overflowTol + " (" + vendorName + ")", "#36cfc9");
-    html += tipRow("显存上限",           pred.vEff.toFixed(2)  + " GB", "#36cfc9");
-    html += tipRow("峰值模型",           mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "#ff4d4f" : "#52c41a");
-    html += tipRow("  显存缺口",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "#faad14" : "#555");
-    html += tipRow("  显存压力",         (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "#faad14" : "#52c41a");
+    html += tipRow("溢出容忍",           overflowTol + " (" + vendorName + ")", "var(--xpusys-cyan)");
+    html += tipRow("显存上限",           pred.vEff.toFixed(2)  + " GB", "var(--xpusys-cyan)");
+    html += tipRow("峰值模型",           mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "var(--xpusys-crit)" : "var(--xpusys-ok)");
+    html += tipRow("  显存缺口",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
+    html += tipRow("  显存压力",         (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
     html += tipRow("模型总量",           total.toFixed(2)      + " GB", pred.color);
-    html += tipRow("  负载缺口",         pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "#faad14" : "#555");
-    html += tipRow("  可用内存",         pred.cRam.toFixed(2)  + " GB", "#b37feb");
-    html += tipRow("  可用虚拟内存",     pred.sVirt.toFixed(2) + " GB", "#888");
-    html += tipRow("  负载压力",         (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "#faad14" : "#52c41a");
+    html += tipRow("  负载缺口",         pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
+    html += tipRow("  可用内存",         pred.cRam.toFixed(2)  + " GB", "var(--xpusys-purple)");
+    html += tipRow("  可用虚拟内存",     pred.sVirt.toFixed(2) + " GB", "var(--xpusys-text-dim)");
+    html += tipRow("  负载压力",         (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
     html += tipRow("预测成功率",         pred.rate + " %",               pred.color);
   }
 
@@ -1160,7 +1358,7 @@ function buildPredictorTip(snap, eng) {
   } else {
     for (const m of sorted) {
       const short = m.name.split(/[\\/]/).pop();
-      html += tipRow(short, m.size.toFixed(2) + " GB", "#52c41a");
+      html += tipRow(short, m.size.toFixed(2) + " GB", "var(--xpusys-ok)");
     }
   }
 
@@ -1322,14 +1520,14 @@ app.registerExtension({
       type: (_name, _setter, _value) => {
         const wrap = document.createElement("div");
         wrap.style.cssText =
-          "line-height:1.7;color:#ccc;font-size:15px;padding:4px 0 2px;max-width:520px;";
+          "line-height:1.7;color:var(--xpusys-tooltip-text);font-size:15px;padding:4px 0 2px;max-width:520px;";
         const zhText =
           `本插件源于对 Intel Arc (XPU) 生态的支持。虽由「少数派」发起，但遵循底层标准，现已实现对 Intel (XPU) 与 NVIDIA (CUDA) 的完美兼容（AMD 支持已在计划中）。<br><br>` +
-          `<span style="color:#36cfc9;font-weight:600;">核心亮点：</span>` +
+          `<span style="color:var(--xpusys-cyan);font-weight:600;">核心亮点：</span>` +
           `独家支持模型运行显存预测，在生成前预判硬件压力；提供精准的跨平台硬件监测。填补工具空白，追求极致稳定。希望你喜欢。`;
         const enText =
           `Born from the Intel Arc (XPU) ecosystem. While built by the "minority," this plugin follows standard specs for seamless Intel (XPU) and NVIDIA (CUDA) support (AMD in progress).<br><br>` +
-          `<span style="color:#36cfc9;font-weight:600;">Highlight:</span> ` +
+          `<span style="color:var(--xpusys-cyan);font-weight:600;">Highlight:</span> ` +
           `Exclusive Model VRAM Prediction to anticipate hardware strain before generation. We aim to fill the gap in XPU monitoring with stable, cross-platform insights. Enjoy!`;
         wrap.innerHTML = en() ? enText : zhText;
 
@@ -1337,7 +1535,7 @@ app.registerExtension({
         const bar = document.createElement("div");
         bar.style.cssText =
           "display:flex;align-items:center;justify-content:flex-end;gap:8px;" +
-          "margin-top:16px;flex-wrap:wrap;border-top:1px solid #333;padding-top:10px;";
+          "margin-top:16px;flex-wrap:wrap;border-top:1px solid var(--xpusys-capsule-divider);padding-top:10px;";
 
         // 版本徽章
         const verBadge = document.createElement("span");
@@ -1383,10 +1581,27 @@ app.registerExtension({
 
     // ── 1 通用设置 ────────────────────────────────────────────────────────
     app.ui.settings.addSetting({
+      id: `${NS}.ThemeStatus`,
+      name: t("插件色彩主题", "Plugin Colour Theme"),
+      tooltip: t("插件配色自动跟随 ComfyUI 当前色彩主题（仅显示，不可手动调整）",
+                 "Plugin colours automatically follow ComfyUI's active colour palette (read-only, not adjustable)"),
+      type: (_name, _setter, _value) => {
+        const wrap = document.createElement("div");
+        _themeStatusEl = wrap;
+        updateThemeStatusUI();
+        return wrap;
+      },
+      defaultValue: "",
+      category: [NS, t("\uE001通用设置", "\uE001General"), t("\uE004主题", "\uE004Theme")],
+    });
+
+    app.ui.settings.addSetting({
       id: S.lang, name: t("界面语言", "Interface Language"),
       tooltip: t("切换悬浮窗与状态栏的显示语言", "Switch display language for overlay and status bar"),
       type: makeLangSelectType(), defaultValue: "system",
       category: [NS, t("\uE001通用设置", "\uE001General"), t("\uE003语言", "\uE003Language")],
+      // reload 逻辑在 makeLangSelectType 的用户 change 事件里（初始化不触发，
+      // 避免 onChange 在设置恢复时触发导致无限 reload 卡在 logo）
     });
 
     app.ui.settings.addSetting({
@@ -1467,12 +1682,38 @@ app.registerExtension({
       category: [NS, t("\uE005显卡监控", "\uE005GPU Monitor"), t("\uE005GPU规格", "\uE005GPU Specs")],
       onChange: applyVisibility,
     });
+    app.ui.settings.addSetting({
+      id: S.gpuIndex, name: t("监视显卡", "Monitored GPU"),
+      tooltip: t("选择要监视的显卡（多卡环境）。默认跟随 ComfyUI 日志中选中的主显卡（Device: xpu:N）；手工切换后会被记住，下次启动保持",
+                 "Choose which GPU to monitor (multi-GPU). Defaults to ComfyUI's primary device shown in the log (Device: xpu:N); manual choice is remembered across restarts"),
+      type: makeGPUIndexType(), defaultValue: -1,
+      category: [NS, t("\uE005显卡监控", "\uE005GPU Monitor"), t("\uE006监视显卡", "\uE006Monitored GPU")],
+    });
+
+    // 启动时应用已保存的显卡选择：
+    //   -1（默认）→ 跟随 ComfyUI 主设备，后端已自动对齐，无需调用
+    //   ≥0（手工选过）→ 恢复用户选择
+    (async () => {
+      try {
+        const saved = Number(getSetting(S.gpuIndex, -1));
+        if (saved >= 0) {
+          const r = await api.fetchApi("/xpusys/select", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ index: saved }),
+          });
+          if (r.ok) pollOnce();
+        }
+      } catch (_) {}
+    })();
 
     const bar = buildBar();
     mountBar(bar);
     applyVisibility();
     applyFontSize();
     setTimeout(applyFontSize, 0);
+
+    startThemeWatcher();             // 跟随 ComfyUI 色彩主题（自动切换深浅配色）
 
     api.addEventListener("message", onWsMessage);
     startPolling();

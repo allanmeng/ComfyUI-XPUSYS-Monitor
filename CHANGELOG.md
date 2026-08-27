@@ -6,6 +6,36 @@
 
 ## English
 
+### v1.0.6 — 2026-08-27
+
+#### ✨ New Features
+
+- **Light theme support**: The plugin now follows ComfyUI's active colour palette automatically.
+  - Detects the current theme via the `Comfy.ColorPalette` setting (with `body` class fallback) and re-applies colours whenever it changes (MutationObserver + polling fallback).
+  - Light palettes (Light, Milk White / `milk_white`, `mikey`) get a dedicated light colour scheme; all others remain dark.
+  - All hard-coded colours refactored into CSS variables — `:root` holds dark defaults, `html[data-xpusys-theme="light"]` overrides them. Status colours are darkened on light backgrounds to keep contrast.
+  - Settings panel gains a read-only **Plugin Colour Theme** item showing the current dark/light state and the active ComfyUI palette id.
+
+- **Multi-GPU monitoring selection**: On multi-GPU systems you can now pick which GPU to monitor.
+  - Settings → GPU Monitor → **Monitored GPU** dropdown lists all visible GPUs; switching updates the status bar instantly and the choice persists across restarts.
+  - By default the plugin follows ComfyUI's primary device (the `Device: xpu:N` shown in the startup log) via `torch.xpu.current_device()`; a manual choice overrides it and is remembered.
+  - Backend: `BaseGPUProvider` gained `device_count()` / `get_device_names()` / `get_selected_device()` / `select_device()`. Intel rebinds Level Zero handles on switch; NVIDIA/AMD have ready implementations (untested).
+  - New API routes: `GET /xpusys/devices` and `POST /xpusys/select`.
+  - Thread-safety: a hardware lock (`_hw_lock`) serialises device switching against the polling thread so snapshots never read a mid-switch state.
+
+#### 🐛 Bug Fixes
+
+- **SPEC capsule showing `--` on Intel Arc A770**: The PCI device ID was never read on Alchemist (A-series) GPUs, so the specs lookup fell through to empty.
+  - Root cause: `device_name` on A770 has no `[0x...]` suffix (B580 does), so the regex extraction failed; the fallback then read the Sysman struct `zes_device_properties_t` at offset 24 (which is `coreName`, a string) as if it were the Core struct `ze_device_properties_t` (where offset 24 is `deviceId`) — always producing an invalid ID.
+  - Fix: the fallback now calls the Core API `zeDeviceGetProperties` (extracted as `_read_pci_id_core()`) so `deviceId` at offset 24 is correct.
+  - Frontend resilience: `resolveSpec()` now falls back to matching by `device_name` across the whole specs table (`matchSpecByName`), so the SPEC capsule works even when the PCI ID cannot be read.
+
+#### 🔧 Improvements
+
+- **TGP read is table-independent**: Confirmed power/TGP data comes directly from the Level Zero Sysman power domains (`zesPowerGetProperties`), not the specs table — so PWR works even when SPEC has no match.
+
+---
+
 ### v1.0.5 — 2026-07-18
 
 #### 🐛 Bug Fixes
@@ -146,6 +176,36 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.6 — 2026-08-27
+
+#### ✨ 新功能
+
+- **浅色主题支持**：插件配色自动跟随 ComfyUI 当前色彩主题。
+  - 通过 `Comfy.ColorPalette` 设置检测当前主题（body class 兜底），主题变化时自动重新应用配色（MutationObserver + 轮询兜底）。
+  - 浅色主题（Light、Milk White / `milk_white`、`mikey`）使用专属浅色配色，其余主题保持深色。
+  - 全部硬编码颜色重构为 CSS 变量——`:root` 为深色默认，`html[data-xpusys-theme="light"]` 覆盖为浅色。浅色下状态色自动加深以保证对比度。
+  - 设置面板新增只读项「插件色彩主题」，显示当前深/浅色状态与 ComfyUI 主题 id。
+
+- **多 GPU 监视选择**：多卡环境下可选择监视哪张显卡。
+  - 设置 → 显卡监控 → **监视显卡** 下拉列出所有可见显卡；切换后状态栏立即更新，选择跨重启保持。
+  - 默认跟随 ComfyUI 主设备（启动日志中的 `Device: xpu:N`），通过 `torch.xpu.current_device()` 获取；手工选择后优先记住用户选择。
+  - 后端：`BaseGPUProvider` 新增 `device_count()` / `get_device_names()` / `get_selected_device()` / `select_device()`。Intel 切换时重绑定 Level Zero 句柄；NVIDIA/AMD 已有实现（未测试）。
+  - 新增 API：`GET /xpusys/devices` 和 `POST /xpusys/select`。
+  - 线程安全：硬件锁 `_hw_lock` 使设备切换与轮询线程互斥，快照不会读到切换中间状态。
+
+#### 🐛 Bug 修复
+
+- **Intel Arc A770 上 SPEC 胶囊显示 `--`**：Alchemist（A 系列）显卡的 PCI 设备 ID 从未被正确读取，导致规格查询落空。
+  - 根本原因：A770 的 `device_name` 不带 `[0x...]` 后缀（B580 带），regex 提取失败；兜底逻辑又按 Core 结构 `ze_device_properties_t`（offset 24 是 `deviceId`）去解析 Sysman 结构 `zes_device_properties_t`（offset 24 是 `coreName` 字符串）——必然读到无效值。
+  - 修复：兜底改用 Core API `zeDeviceGetProperties`（抽出为 `_read_pci_id_core()`），offset 24 读取的 `deviceId` 正确。
+  - 前端加固：`resolveSpec()` 新增按 `device_name` 在整个规格表内匹配的兜底（`matchSpecByName`），即使 PCI ID 读不到也能显示 SPEC 胶囊。
+
+#### 🔧 改进
+
+- **TGP 读取不依赖规格表**：确认功率/TGP 数据直接来自 Level Zero Sysman 的 power domain（`zesPowerGetProperties`），而非规格表——因此即使 SPEC 无匹配，PWR 也能正常显示。
+
+---
 
 ### v1.0.5 — 2026-07-18
 

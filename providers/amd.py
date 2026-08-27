@@ -77,10 +77,10 @@ class AMDProvider(BaseGPUProvider):
         """Initialise ROCm SMI and grab the device handle for GPU 0."""
         try:
             import rocm_smi
-            rocm_smi.initializeRsmiTracking(0)
+            rocm_smi.initializeRsmiTracking(self._device_index)
             self._rocm_ok = True
-            name = rocm_smi.getCardName(0)
-            logger.info(f"XPUSYSMonitor: rocm_smi OK — device[0] = {name!r}")
+            name = rocm_smi.getCardName(self._device_index)
+            logger.info(f"XPUSYSMonitor: rocm_smi OK — device[{self._device_index}] = {name!r}")
         except ImportError:
             logger.warning(
                 "XPUSYSMonitor: rocm_smi not installed — "
@@ -88,6 +88,52 @@ class AMDProvider(BaseGPUProvider):
             )
         except Exception as exc:
             logger.warning(f"XPUSYSMonitor: rocm_smi init error — {exc}")
+
+    # ------------------------------------------------------------------
+    # Multi-GPU device selection
+    # ------------------------------------------------------------------
+
+    def device_count(self) -> int:
+        try:
+            import rocm_smi
+            return int(rocm_smi.getDeviceCount())
+        except Exception:
+            return 1
+
+    def get_device_names(self) -> list:
+        names = []
+        try:
+            import rocm_smi
+            for i in range(self.device_count()):
+                try:
+                    names.append(str(rocm_smi.getCardName(i)))
+                except Exception:
+                    names.append(f"AMD GPU{i}")
+        except Exception:
+            names.append(self._read_device_name())
+        return names
+
+    def get_selected_device(self) -> int:
+        return self._device_index
+
+    def select_device(self, index: int) -> bool:
+        """Switch monitoring to another AMD GPU."""
+        try:
+            import rocm_smi
+            count = int(rocm_smi.getDeviceCount())
+            if not (0 <= index < count):
+                logger.warning(f"XPUSYSMonitor: invalid AMD device index {index} (count={count})")
+                return False
+            self._device_index = index
+            try:
+                name = rocm_smi.getCardName(index)
+            except Exception:
+                name = f"AMD GPU{index}"
+            logger.info(f"XPUSYSMonitor: switched to AMD device[{index}] = {name!r}")
+            return True
+        except Exception as exc:
+            logger.warning(f"XPUSYSMonitor: select_device failed — {exc}")
+            return False
 
     def _check_torch(self) -> None:
         """Check if torch.cuda is available (AMD PyTorch uses cuda backend)."""
@@ -125,13 +171,13 @@ class AMDProvider(BaseGPUProvider):
         if self._rocm_ok:
             try:
                 import rocm_smi
-                return rocm_smi.getCardName(0)
+                return rocm_smi.getCardName(self._device_index)
             except Exception:
                 pass
         if self._torch_ok:
             try:
                 import torch
-                return torch.cuda.get_device_name(0)
+                return torch.cuda.get_device_name(self._device_index)
             except Exception:
                 pass
         return "AMD GPU"
@@ -142,7 +188,7 @@ class AMDProvider(BaseGPUProvider):
             try:
                 import rocm_smi
                 # rocm_smi.getPciId returns PCI ID as hex string like "0x744c"
-                raw = rocm_smi.getPciId(0)
+                raw = rocm_smi.getPciId(self._device_index)
                 if isinstance(raw, int):
                     return f"0x{raw:04x}"
                 raw = str(raw).strip().lower()
@@ -155,7 +201,7 @@ class AMDProvider(BaseGPUProvider):
             try:
                 import torch
                 # Try torch.cuda.get_device_properties — may expose pci_bus_id
-                props = torch.cuda.get_device_properties(0)
+                props = torch.cuda.get_device_properties(self._device_index)
                 # Some newer PyTorch versions expose pci_bus_id; parse if available
                 pci = getattr(props, "pci_bus_id", None)
                 if pci and ":" in pci:
@@ -171,9 +217,9 @@ class AMDProvider(BaseGPUProvider):
             try:
                 import rocm_smi
                 # VRAM usage in bytes
-                vram_used = rocm_smi.getMemUsedVdev(0)
-                vram_free = rocm_smi.getMemFreeVdev(0)
-                vram_total = rocm_smi.getMemSizeVdev(0)
+                vram_used = rocm_smi.getMemUsedVdev(self._device_index)
+                vram_free = rocm_smi.getMemFreeVdev(self._device_index)
+                vram_total = rocm_smi.getMemSizeVdev(self._device_index)
                 gb = 1024 ** 3
                 return (
                     vram_free / gb,
@@ -188,7 +234,7 @@ class AMDProvider(BaseGPUProvider):
             try:
                 import torch
                 gb = 1024 ** 3
-                total = torch.cuda.get_device_properties(0).total_memory / gb
+                total = torch.cuda.get_device_properties(self._device_index).total_memory / gb
                 return 0.0, total, 0.0  # free/used unavailable without rocm_smi
             except Exception:
                 pass
@@ -217,7 +263,7 @@ class AMDProvider(BaseGPUProvider):
         try:
             import rocm_smi
             # GPU busy percentage
-            return float(rocm_smi.getGpuBusyVdev(0))
+            return float(rocm_smi.getGpuBusyVdev(self._device_index))
         except Exception:
             return 0.0
 
@@ -228,7 +274,7 @@ class AMDProvider(BaseGPUProvider):
         try:
             import rocm_smi
             # SCLK (system clock) in MHz
-            sclk = rocm_smi.getSingleClockSpeed(0)
+            sclk = rocm_smi.getSingleClockSpeed(self._device_index)
             if isinstance(sclk, str):
                 # Some versions return string like "2100 MHz"
                 sclk = int(sclk.split()[0])
@@ -243,7 +289,7 @@ class AMDProvider(BaseGPUProvider):
         try:
             import rocm_smi
             # Temperature in Celsius
-            return float(rocm_smi.getTempVdev(0))
+            return float(rocm_smi.getTempVdev(self._device_index))
         except Exception:
             return -1.0
 
@@ -254,10 +300,10 @@ class AMDProvider(BaseGPUProvider):
         try:
             import rocm_smi
             # Power in Watts
-            power_w = float(rocm_smi.getPowerVdev(0))
+            power_w = float(rocm_smi.getPowerVdev(self._device_index))
             # TDP (average power) - fallback to current if not available
             try:
-                tgp_w = float(rocm_smi.getPowerCapVdev(0))
+                tgp_w = float(rocm_smi.getPowerCapVdev(self._device_index))
             except Exception:
                 tgp_w = power_w  # Use current as estimate
             return power_w, tgp_w, True

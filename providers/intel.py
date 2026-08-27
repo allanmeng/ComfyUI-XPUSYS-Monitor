@@ -12,6 +12,7 @@ Power           : Level Zero Sysman — zesPowerGetEnergyCounter  (admin only)
 import ctypes
 import logging
 import os
+import threading
 import time
 from typing import Optional, Tuple
 
@@ -94,9 +95,11 @@ def _get_cpu_info() -> Tuple[str, int]:
 class _LevelZeroSysman:
     """Thin ctypes wrapper — GPU metrics via Intel Level Zero Sysman."""
 
-    def __init__(self, is_admin: bool):
+    def __init__(self, is_admin: bool, device_index: int = 0):
         self._lib             = None
         self._device          = None
+        self._device_index    = device_index
+        self._is_admin        = is_admin
         self._power_handles:  list = []
         self._prev_energies:  list = []
         self._engine_handles: list = []
@@ -180,8 +183,59 @@ class _LevelZeroSysman:
         dcnt = ctypes.c_uint32(0); dev_fn(drivers[0], ctypes.byref(dcnt), None)
         if dcnt.value == 0: return None
         devices = (ctypes.c_void_p * dcnt.value)(); dev_fn(drivers[0], ctypes.byref(dcnt), devices)
-        logger.debug(f"XPUSYSMonitor: {label} succeeded.")
-        return devices[0]
+        logger.debug(f"XPUSYSMonitor: {label} succeeded ({dcnt.value} device(s)).")
+        idx = min(self._device_index, dcnt.value - 1)
+        return devices[idx]
+
+    def device_count(self) -> int:
+        """Return the number of Intel GPUs visible via Level Zero."""
+        if self._lib is None:
+            return 0
+        try:
+            drv_fn = self._lib.zesDriverGet if hasattr(self._lib, "zesDriverGet") else None
+            if drv_fn is None:
+                return 0
+            drv_fn.restype = ctypes.c_int
+            drv_fn.argtypes = [ctypes.POINTER(ctypes.c_uint32), ctypes.c_void_p]
+            cnt = ctypes.c_uint32(0); drv_fn(ctypes.byref(cnt), None)
+            if cnt.value == 0: return 0
+            drivers = (ctypes.c_void_p * cnt.value)(); drv_fn(ctypes.byref(cnt), drivers)
+            dev_fn = self._lib.zesDeviceGet
+            dev_fn.restype = ctypes.c_int
+            dev_fn.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32), ctypes.c_void_p]
+            dcnt = ctypes.c_uint32(0); dev_fn(drivers[0], ctypes.byref(dcnt), None)
+            return int(dcnt.value)
+        except Exception:
+            return 1
+
+    def select_device(self, index: int) -> bool:
+        """Rebind to another Intel GPU (re-run full setup on that device)."""
+        try:
+            total = self.device_count()
+            if total == 0:
+                return False
+            if not (0 <= index < total):
+                logger.warning(f"XPUSYSMonitor: invalid Intel device index {index} (count={total})")
+                return False
+            self._device_index = index
+            # Reset per-device state so _load() re-enumerates everything
+            self._power_handles  = []
+            self._prev_energies  = []
+            self._engine_handles = []
+            self._mem_handles    = []
+            self._freq_handles   = []
+            self._temp_handle    = None
+            self._temp_unavailable = False
+            self._power_denied   = False
+            self._available      = False
+            self.device_name     = ""
+            self.pci_id          = ""
+            self.tgp_w           = 0.0
+            self._load(self._is_admin)
+            return self._available
+        except Exception as exc:
+            logger.warning(f"XPUSYSMonitor: select_device failed — {exc}")
+            return False
 
     def _read_device_name(self, lib, device) -> None:
         try:
@@ -201,24 +255,46 @@ class _LevelZeroSysman:
                 self.device_name = name_bytes.decode('utf-8', errors='replace').strip()
                 logger.info(f"XPUSYSMonitor: device name = {self.device_name!r}")
                 # ── Attempt to extract PCI device ID ──
-                # Method 1: regex from device_name "[0x...]" suffix
+                # Method 1: regex from device_name "[0x...]" suffix (B580 has it)
                 import re
                 m = re.search(r'\[0x([0-9a-fA-F]+)\]', self.device_name)
                 if m:
                     self.pci_id = "0x" + m.group(1).lower()
                     logger.info(f"XPUSYSMonitor: PCI ID (regex) = {self.pci_id}")
                 else:
-                    # Method 2: read ze_device_properties_t.deviceId at offset 24
-                    # stype(4)+pad(4)+pNext(8)+type(4)+vendorId(4)+deviceId(4) = offset 24
-                    dev_id = ctypes.cast(ctypes.addressof(buf) + 24,
-                                         ctypes.POINTER(ctypes.c_uint32))[0]
-                    if 0 < dev_id < 0xFFFF:
-                        self.pci_id = f"0x{dev_id:04x}"
-                        logger.info(f"XPUSYSMonitor: PCI ID (struct) = {self.pci_id}")
+                    # Method 2: read ze_device_properties_t.deviceId via the CORE API.
+                    # NOTE: must call zeDeviceGetProperties (not zesDeviceGetProperties —
+                    # the Sysman struct zes_device_properties_t has coreName at +24,
+                    # NOT deviceId. Core struct ze_device_properties_t:
+                    #   stype(4)+pad(4)+pNext(8)+type(4)+vendorId(4)+deviceId(4) = +24
+                    self._read_pci_id_core(lib, device)
             else:
                 logger.debug("XPUSYSMonitor: 'Intel' not found in device properties buffer")
         except Exception as exc:
             logger.debug(f"XPUSYSMonitor: _read_device_name — {exc}")
+
+    def _read_pci_id_core(self, lib, device) -> None:
+        """Read PCI device ID from ze_device_properties_t (Core API)."""
+        try:
+            fn = lib.zeDeviceGetProperties
+            fn.restype  = ctypes.c_int
+            fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            cbuf = (ctypes.c_uint8 * 2048)()
+            # ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x1
+            ctypes.cast(cbuf, ctypes.POINTER(ctypes.c_uint32))[0] = 0x1
+            ret = fn(device, cbuf)
+            if ret != ZE_RESULT_SUCCESS:
+                logger.debug(f"XPUSYSMonitor: zeDeviceGetProperties ret={ret:#010x}")
+                return
+            dev_id = ctypes.cast(ctypes.addressof(cbuf) + 24,
+                                 ctypes.POINTER(ctypes.c_uint32))[0]
+            if 0 < dev_id < 0xFFFF:
+                self.pci_id = f"0x{dev_id:04x}"
+                logger.info(f"XPUSYSMonitor: PCI ID (struct) = {self.pci_id}")
+            else:
+                logger.debug(f"XPUSYSMonitor: PCI ID (struct) invalid — {dev_id:#x}")
+        except Exception as exc:
+            logger.debug(f"XPUSYSMonitor: _read_pci_id_core — {exc}")
 
     # --- setup methods ---
 
@@ -770,16 +846,27 @@ class IntelProvider(BaseGPUProvider):
 
     GPU_VENDOR = "intel"
 
-    def __init__(self, interval_ms: int = 1000):
+    def __init__(self, interval_ms: int = 1000, device_index: int = -1):
+        # device_index < 0 → 跟随 ComfyUI 主设备（torch.xpu.current_device()），
+        # 即启动日志 "Device: xpu:N ..." 中 ComfyUI 实际选中的那张卡。
         self._torch_ok     = False
         self._psutil_ok    = False
+        self._requested_index = device_index
         self._device_index = 0
         self._is_admin     = _is_admin()
         self._cpu_model    = ""
         self._cpu_threads  = 0
+        # 硬件句柄锁：select_device()（HTTP 线程）与 _poll()（轮询线程）
+        # 并发访问 _LevelZeroSysman 句柄，切换时需互斥，避免读到中间状态
+        self._hw_lock = threading.RLock()
         self._check_torch()
         self._check_psutil()
-        self._lz = _LevelZeroSysman(self._is_admin)
+        # 解析最终设备索引：显式指定用指定值，否则跟随 torch.xpu 主设备
+        if self._requested_index is None or self._requested_index < 0:
+            self._device_index = self._read_current_device_index()
+        else:
+            self._device_index = max(0, int(self._requested_index))
+        self._lz = _LevelZeroSysman(self._is_admin, device_index=self._device_index)
 
         # BaseGPUProvider.__init__ starts the polling thread — call last
         super().__init__(interval_ms=interval_ms)
@@ -788,6 +875,63 @@ class IntelProvider(BaseGPUProvider):
             f"XPUSYSMonitor: IntelProvider started "
             f"(admin={self._is_admin}, torch={self._torch_ok}, lz={self._lz.available})"
         )
+
+    def _read_current_device_index(self) -> int:
+        """Return torch.xpu.current_device() — the GPU ComfyUI is actually using."""
+        try:
+            import torch
+            if torch.xpu.is_available():
+                idx = int(torch.xpu.current_device())
+                logger.info(f"XPUSYSMonitor: following ComfyUI primary XPU device — xpu:{idx}")
+                return idx
+        except Exception:
+            pass
+        return 0
+
+    # ------------------------------------------------------------------
+    # Multi-GPU device selection
+    # ------------------------------------------------------------------
+
+    def device_count(self) -> int:
+        n = self._lz.device_count()
+        if n > 0:
+            return n
+        return 1
+
+    def get_device_names(self) -> list:
+        names = []
+        total = self.device_count()
+        if total == 0:
+            return []
+        try:
+            import torch
+            for i in range(total):
+                try:
+                    names.append(str(torch.xpu.get_device_name(i)))
+                except Exception:
+                    names.append(f"Intel GPU{i}")
+        except Exception:
+            names.append(self._lz.device_name or f"Intel GPU{self._device_index}")
+        return names
+
+    def get_selected_device(self) -> int:
+        return self._device_index
+
+    def select_device(self, index: int) -> bool:
+        """Switch monitoring to another Intel GPU (rebinds Level Zero + torch)."""
+        with self._hw_lock:   # 与 _poll 互斥，避免切换瞬间读到中间状态
+            total = self.device_count()
+            if not (0 <= index < total):
+                logger.warning(f"XPUSYSMonitor: invalid Intel device index {index} (count={total})")
+                return False
+            if index == self._device_index:
+                return True
+            # Rebind Level Zero device
+            if not self._lz.select_device(index):
+                return False
+            self._device_index = index
+            logger.info(f"XPUSYSMonitor: switched to Intel device[{index}] = {self._lz.device_name!r}")
+            return True
 
     # ------------------------------------------------------------------
 
@@ -839,22 +983,24 @@ class IntelProvider(BaseGPUProvider):
         snap.is_admin        = self._is_admin
         snap.power_available = self._is_admin and bool(self._lz._power_handles)
 
-        # VRAM total/free — Level Zero, fully GIL-free
-        free_gb, total_gb        = self._lz.read_vram_state()
-        snap.vram_total_gb       = total_gb
-        snap.vram_free_gb        = free_gb
-        snap.vram_driver_used_gb = max(0.0, total_gb - free_gb)
+        # 硬件读取与 select_device() 互斥：切换显卡时轮询等待，保证快照一致
+        with self._hw_lock:
+            # VRAM total/free — Level Zero, fully GIL-free
+            free_gb, total_gb        = self._lz.read_vram_state()
+            snap.vram_total_gb       = total_gb
+            snap.vram_free_gb        = free_gb
+            snap.vram_driver_used_gb = max(0.0, total_gb - free_gb)
 
-        # Allocator stats — torch.xpu only (no Level Zero equivalent)
-        snap.vram_allocated_gb, snap.vram_reserved_gb = self._read_torch_stats()
+            # Allocator stats — torch.xpu only (no Level Zero equivalent)
+            snap.vram_allocated_gb, snap.vram_reserved_gb = self._read_torch_stats()
 
-        snap.gpu_load_pct = self._lz.read_gpu_load_pct()
-        snap.gpu_freq_mhz = self._lz.read_gpu_freq_mhz()
-        snap.gpu_temp_c   = self._lz.read_gpu_temp_c()
-        snap.power_w      = self._lz.read_power_w()
-        snap.device_name  = self._lz.device_name
-        snap.pci_id       = self._lz.pci_id
-        snap.tgp_w        = self._lz.tgp_w
+            snap.gpu_load_pct = self._lz.read_gpu_load_pct()
+            snap.gpu_freq_mhz = self._lz.read_gpu_freq_mhz()
+            snap.gpu_temp_c   = self._lz.read_gpu_temp_c()
+            snap.power_w      = self._lz.read_power_w()
+            snap.device_name  = self._lz.device_name
+            snap.pci_id       = self._lz.pci_id
+            snap.tgp_w        = self._lz.tgp_w
 
         # CPU / RAM
         sys = _read_cpu_ram_stats(self._psutil_ok)

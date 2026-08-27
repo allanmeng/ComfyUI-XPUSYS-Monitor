@@ -82,6 +82,41 @@ def register_routes(server):
         snap = _provider.get_snapshot()
         return web.json_response(_snapshot_to_dict(snap))
 
+    @server.routes.get("/xpusys/devices")
+    async def get_devices(request):
+        """Return the list of visible GPUs and the currently selected one."""
+        if _provider is None:
+            return web.json_response({"error": "provider not ready"}, status=503)
+        try:
+            names = _provider.get_device_names()
+        except Exception:
+            names = []
+        try:
+            selected = _provider.get_selected_device()
+        except Exception:
+            selected = 0
+        devices = [
+            {"index": i, "name": names[i] if i < len(names) else f"GPU{i}"}
+            for i in range(max(1, _provider.device_count()))
+        ]
+        return web.json_response({"devices": devices, "selected": selected})
+
+    @server.routes.post("/xpusys/select")
+    async def select_device(request):
+        """Switch monitoring to another GPU. Body: {"index": N}"""
+        if _provider is None:
+            return web.json_response({"error": "provider not ready"}, status=503)
+        try:
+            data  = await request.json()
+            index = int(data.get("index", 0))
+        except Exception:
+            return web.json_response({"error": "invalid body"}, status=400)
+        ok = _provider.select_device(index)
+        if not ok:
+            return web.json_response({"error": f"cannot select device {index}"}, status=400)
+        snap = _provider.get_snapshot()
+        return web.json_response({"ok": True, "selected": index, "device_name": snap.device_name})
+
     @server.routes.get("/xpusys/specs")
     async def get_specs(request):
         """Return the GPU specs JSON database. Cached in memory after first read."""

@@ -101,6 +101,53 @@ class NvidiaProvider(BaseGPUProvider):
         except Exception as exc:
             logger.warning(f"XPUSYSMonitor: pynvml init error — {exc}")
 
+    # ------------------------------------------------------------------
+    # Multi-GPU device selection
+    # ------------------------------------------------------------------
+
+    def device_count(self) -> int:
+        try:
+            import pynvml
+            return int(pynvml.nvmlDeviceGetCount())
+        except Exception:
+            return 1
+
+    def get_device_names(self) -> list:
+        names = []
+        try:
+            import pynvml
+            for i in range(self.device_count()):
+                h = pynvml.nvmlDeviceGetHandleByIndex(i)
+                n = pynvml.nvmlDeviceGetName(h)
+                if isinstance(n, bytes):
+                    n = n.decode("utf-8", errors="replace")
+                names.append(n)
+        except Exception:
+            names.append(self._read_device_name())
+        return names
+
+    def get_selected_device(self) -> int:
+        return self._device_index
+
+    def select_device(self, index: int) -> bool:
+        """Switch monitoring to another NVIDIA GPU."""
+        try:
+            import pynvml
+            count = int(pynvml.nvmlDeviceGetCount())
+            if not (0 <= index < count):
+                logger.warning(f"XPUSYSMonitor: invalid NVIDIA device index {index} (count={count})")
+                return False
+            self._handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+            self._device_index = index
+            name = pynvml.nvmlDeviceGetName(self._handle)
+            if isinstance(name, bytes):
+                name = name.decode("utf-8", errors="replace")
+            logger.info(f"XPUSYSMonitor: switched to NVIDIA device[{index}] = {name!r}")
+            return True
+        except Exception as exc:
+            logger.warning(f"XPUSYSMonitor: select_device failed — {exc}")
+            return False
+
     def _check_torch(self) -> None:
         try:
             import torch
