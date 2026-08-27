@@ -26,7 +26,8 @@ diagnose_rsv.py
 pack_plugin.py
 
 # 内部技术文档（不发布）
-predictor_algorithm.md
+# 根目录草稿不发布；正式版已移至 docs/predictor_algorithm.md 并纳入远端
+/predictor_algorithm.md
 predictor_explained.md
 
 # git 操作残留（不发布）
