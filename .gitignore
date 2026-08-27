@@ -20,8 +20,20 @@ Thumbs.db
 check_igcl_power.py
 check_pdh_power.py
 mdapi_explore.py
+diagnose_rsv.py
+
+# 打包工具（不发布）
+pack_plugin.py
 
 # 内部技术文档（不发布）
 predictor_algorithm.md
 predictor_explained.md
-predictor_algorithm.md  
+
+# git 操作残留（不发布）
+.commitmsg
+
+# 本地工作记忆（不发布）
+.workbuddy/
+
+# 内部文档 / 草稿（不发布）
+docs/video_script_comfyui_plugin.md
