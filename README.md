@@ -20,14 +20,28 @@
 
 ## Features
 
-The status bar contains seven capsules from left to right, split into two groups:
+The status bar contains eight capsules from left to right, split into three groups:
 
 ```
-[ PRED ]  [ CPU ]  [ RAM ]  |  GPU  |  VRAM  |  RSV  |  PWR  |
- Predict   Processor Memory     └──────── GPU Group ──────────┘
+[ PRED ]  [ CPU ]  [ RAM ]  |  GPU  |  VRAM  |  RSV  |  PWR  |  SPEC  |  ☰
+ Predict   Processor Memory     └────── GPU Group ──────┘          Spark
 ```
 
 > Hover over any capsule to expand its detailed data panel.
+> Click `☰` to open the **Spark Monitor** window (see below).
+
+---
+
+### ☰ Spark Monitor — Live Charts Panel
+
+A draggable monitor window (ADLX-style header with teal-purple gradient) opened by the `☰` capsule:
+
+- **5 live sparkline charts**: GPU Load, VRAM Usage, Power, CPU Usage, Memory Usage — smooth curves, gradient area fill + glow, no axes; the title overlays the chart with a live value (`GPU Load: 45%`).
+- **Per-chart critical alert**: when a metric crosses its threshold (load/VRAM/power > 95%, CPU > 80%, RAM > 90%), that chart box gains a translucent red background.
+- **Sampling follows the Refresh Interval setting** (~60s rolling window).
+- **Settings → Spark Monitor → Order & Visibility**: toggle each chart on/off and drag `≡` to reorder — applies instantly, persisted across restarts.
+- **Smart positioning**: first open anchors to the capsule; after dragging, position persists to `localStorage` and is restored on reload.
+- Subtitle shows the full GPU name (ID stripped) + refresh interval. Fully bilingual.
 
 ---
 

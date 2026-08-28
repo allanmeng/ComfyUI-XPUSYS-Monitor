@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.7.1";
+const VERSION = "1.0.8";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -29,6 +29,7 @@ const S = {
   showPower:     `${NS}.ShowPower`,
   showSpecs:     `${NS}.ShowSpecs`,
   gpuIndex:      `${NS}.GPUIndex`,
+  sparkCharts:   `${NS}.SparkCharts`,
 };
 
 // Intel Arc PCI device ID → spec TBP (W) — Intel ARK / product pages / NotebookCheck
@@ -326,6 +327,85 @@ function makeGPUIndexType() {
   };
 }
 
+// 火花监控排序/开关设置 UI：5 行（开关 + 拖拽排序），变更即时生效
+function makeSparkSortType() {
+  return (_name, setter, value) => {
+    const wrap = document.createElement("div");
+    wrap.className = "xpusys-spark-sort";
+
+    const apply = (order) => {
+      try { setter(JSON.stringify(order)); } catch (_) {}
+      rebuildDockCharts(order);     // 立即重建窗口 box（含当前已打开状态）
+    };
+
+    const render = () => {
+      wrap.innerHTML = "";
+      const order = getSparkOrder();
+      let dragIdx = -1;
+
+      order.forEach((item, idx) => {
+        const cfg = DOCK_CHARTS.find((c) => c.key === item.key);
+        if (!cfg) return;
+
+        const row = document.createElement("div");
+        row.className = "xpusys-spark-row";
+        row.draggable = true;
+        row.dataset.key = item.key;
+
+        const handle = document.createElement("span");
+        handle.className = "xpusys-spark-drag";
+        handle.textContent = "≡";
+
+        const label = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = item.on !== false;
+        cb.addEventListener("change", () => {
+          item.on = cb.checked;
+          apply(order);
+          render();               // 重绘保持视觉同步
+        });
+        const span = document.createElement("span");
+        span.textContent = cfg.title();
+        label.appendChild(cb);
+        label.appendChild(span);
+
+        row.appendChild(handle);
+        row.appendChild(label);
+
+        // HTML5 拖拽排序
+        row.addEventListener("dragstart", (e) => {
+          dragIdx = idx;
+          row.classList.add("xpusys-spark-dragging");
+          try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.key); } catch (_) {}
+        });
+        row.addEventListener("dragend", () => row.classList.remove("xpusys-spark-dragging"));
+        row.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          if (dragIdx === idx) return;
+          row.classList.add("xpusys-spark-over");
+        });
+        row.addEventListener("dragleave", () => row.classList.remove("xpusys-spark-over"));
+        row.addEventListener("drop", (e) => {
+          e.preventDefault();
+          row.classList.remove("xpusys-spark-over");
+          if (dragIdx < 0 || dragIdx === idx) { dragIdx = -1; return; }
+          const [moved] = order.splice(dragIdx, 1);
+          order.splice(idx, 0, moved);
+          dragIdx = -1;
+          apply(order);
+          render();
+        });
+
+        wrap.appendChild(row);
+      });
+    };
+
+    render();
+    return wrap;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // CSS
 // ---------------------------------------------------------------------------
@@ -366,6 +446,9 @@ function injectStyles() {
       --xpusys-shadow-hover: -2px -2px 5px rgba(255,255,255,0.05),
                              2px 2px 6px rgba(0,0,0,0.6);
       --xpusys-shadow-tip: 0 4px 16px rgba(0,0,0,0.6);
+      /* 监控面板时序图（Sparkline） */
+      --xpusys-chart-bg:   #1c2128;   /* 深色轨道背景 */
+      --xpusys-chart-line: #00e5ff;   /* 青蓝折线 */
     }
     html[data-xpusys-theme="light"] {
       --xpusys-capsule-bg:      rgba(0,0,0,0.04);
@@ -394,6 +477,8 @@ function injectStyles() {
       --xpusys-blue:     #2f54eb;   --xpusys-blue-dim:#1d39c4;
       --xpusys-orange:   #d46b08;
       --xpusys-lime:     #7cb305;   /* PRED 安全标签（浅色加深保证可读） */
+      --xpusys-chart-bg:   #eef1f5; /* 浅色轨道背景 */
+      --xpusys-chart-line: #08979c; /* 浅色下折线加深 */
       --xpusys-shadow:   -2px -2px 5px rgba(255,255,255,0.6),
                          2px 2px 6px rgba(0,0,0,0.12);
       --xpusys-shadow-hover: -2px -2px 5px rgba(255,255,255,0.8),
@@ -527,6 +612,206 @@ function injectStyles() {
       background: var(--xpusys-capsule-hover);
       border-radius: 3px;
     }
+
+    /* ── tools：独立胶囊（不并入 GPU 组），只放一个按钮，无浮层 ── */
+    .xpusys-tools-section {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--xpusys-capsule-bg);
+      border: 1px solid var(--xpusys-capsule-border);
+      border-radius: 8px;
+      padding: 10px 0.6em;
+      margin: 0 1.5px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.15s, box-shadow 0.15s;
+      box-shadow: var(--xpusys-shadow);
+    }
+    .xpusys-tools-section:hover {
+      background: var(--xpusys-capsule-hover);
+      box-shadow: var(--xpusys-shadow-hover);
+    }
+    .xpusys-tools-btn {
+      background: transparent;
+      border: 0;
+      color: var(--xpusys-text-dim);
+      font-size: var(--xpusys-fs, 18px);
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+    }
+    .xpusys-tools-btn:hover { color: var(--xpusys-text); }
+
+    /* ── 监视面板窗口（点击 tools 按钮打开，头部风格同 ADLX Monitor）── */
+    .xpusys-dock {
+      position: fixed;
+      top: 52px;
+      right: 12px;
+      width: 360px;
+      max-width: calc(100vw - 24px);
+      background: var(--xpusys-tooltip-bg);
+      border: 1px solid var(--xpusys-tooltip-border);
+      border-radius: 14px;
+      box-shadow: var(--xpusys-shadow-tip);
+      color: var(--xpusys-tooltip-text);
+      z-index: 9998;
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+    }
+    .xpusys-dock[hidden] { display: none; }
+    .xpusys-dock-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      background: linear-gradient(135deg,
+                  color-mix(in srgb, var(--xpusys-cyan) 18%, transparent),
+                  color-mix(in srgb, var(--xpusys-purple) 12%, transparent));
+      border-bottom: 1px solid var(--xpusys-tooltip-border);
+      cursor: move;
+      user-select: none;
+    }
+    .xpusys-dock-titlewrap { min-width: 0; }
+    .xpusys-dock-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--xpusys-tooltip-title);
+    }
+    .xpusys-dock-subtitle {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--xpusys-tooltip-note);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .xpusys-dock-close {
+      border: 0;
+      background: rgba(255, 255, 255, 0.08);
+      color: #d8d8d8;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .xpusys-dock-close:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+    .xpusys-dock-body {
+      min-height: 120px;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      display: grid;
+      gap: 10px;
+    }
+    /* ── 监控面板：时序图 box（图撑满整个 box，标题 overlay 左上角）── */
+    .xpusys-dock-chart-box {
+      position: relative;
+      overflow: hidden;              /* 圆角裁剪 svg 直角 */
+      background: var(--xpusys-chart-bg);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      height: 96px;
+      padding: 0;
+    }
+    html[data-xpusys-theme="light"] .xpusys-dock-chart-box {
+      border-color: rgba(0, 0, 0, 0.10);
+    }
+    /* 标题 overlay 在火花图左上角（chip 有独立背景，折线从下方穿过也可读） */
+    .xpusys-dock-chart-title {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      z-index: 1;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      color: var(--xpusys-text-dim);
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: color-mix(in srgb, var(--xpusys-chart-bg) 60%, transparent);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    /* 多 box 配色：data-color 局部覆盖折线色（SVG 继承局部变量） */
+    .xpusys-dock-chart-box[data-color="green"]  { --xpusys-chart-line: var(--xpusys-ok); }
+    .xpusys-dock-chart-box[data-color="purple"] { --xpusys-chart-line: var(--xpusys-purple); }
+    .xpusys-dock-chart-box[data-color="blue"]   { --xpusys-chart-line: var(--xpusys-blue); }
+    .xpusys-dock-chart-box[data-color="orange"] { --xpusys-chart-line: var(--xpusys-orange); }
+    /* 临界告警：对应指标达到临界阈值时，该 box 出现统一半透明红背景
+       （::before 在背景之上、SVG/标题之下，不遮挡图与文字） */
+    .xpusys-dock-chart-box.is-critical::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 77, 79, 0.15);
+      pointer-events: none;
+    }
+    .xpusys-dock-spark {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    /* 面积渐变（顶部亮 → 底部融入背景）；fill 的 url(#id) 由 JS 按实例动态设置 */
+    .xpusys-dock-spark .spark-stop-a { stop-color: var(--xpusys-chart-line); stop-opacity: 0.35; }
+    .xpusys-dock-spark .spark-stop-b { stop-color: var(--xpusys-chart-line); stop-opacity: 0; }
+    /* 微光层（模糊亮线，Glow）；filter 的 url(#id) 由 JS 按实例动态设置 */
+    .xpusys-dock-spark .spark-glow {
+      fill: none;
+      stroke: var(--xpusys-chart-line);
+      stroke-opacity: 0.55;
+      stroke-width: 2.5;
+      vector-effect: non-scaling-stroke;
+    }
+    /* 主折线（平滑，2px，无数据点） */
+    .xpusys-dock-spark .spark-line {
+      fill: none;
+      stroke: var(--xpusys-chart-line);
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+    /* ── 设置：火花监控排序与开关 ── */
+    .xpusys-spark-sort { display: flex; flex-direction: column; gap: 6px; min-width: 260px; }
+    .xpusys-spark-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border: 1px solid var(--xpusys-capsule-border);
+      border-radius: 8px;
+      background: var(--xpusys-capsule-bg);
+      cursor: grab;
+    }
+    .xpusys-spark-row:hover { background: var(--xpusys-capsule-hover); }
+    .xpusys-spark-row.dragging { opacity: 0.5; }
+    .xpusys-spark-row.over { border-color: var(--xpusys-cyan); }
+    .xpusys-spark-drag {
+      color: var(--xpusys-text-faint);
+      cursor: grab;
+      user-select: none;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .xpusys-spark-row label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--xpusys-text);
+    }
+    .xpusys-spark-row input[type="checkbox"] { cursor: pointer; }
 
     .xpusys-value    { font-weight: 600; letter-spacing: 0.02em; }
     .xpusys-ok       { color: var(--xpusys-ok); }
@@ -775,6 +1060,19 @@ function buildBar() {
   gpuGroup.appendChild(_sec.specs.el);
   bar.appendChild(gpuGroup);
 
+  // tools：独立胶囊（不并入 GPU 组）——点击胶囊任意位置打开监视面板窗口。
+  // 注意：不在 showTip 的 builders 里注册，因此鼠标悬停不会出现浮层。
+  const toolsEl  = document.createElement("div");
+  toolsEl.className = "xpusys-tools-section";
+  const toolsBtn = document.createElement("button");
+  toolsBtn.type = "button";
+  toolsBtn.className = "xpusys-tools-btn";
+  toolsBtn.textContent = "☰";
+  toolsEl.appendChild(toolsBtn);
+  toolsEl.addEventListener("click", toggleDock);   // 整体点击触发（含 padding 区域）
+  _sec.tools = { el: toolsEl, valEl: toolsBtn };
+  bar.appendChild(toolsEl);
+
   for (const [key, sec] of Object.entries(_sec)) {
     sec.el.addEventListener("mouseenter", () => { if (_snap) showTip(key, _snap); });
     sec.el.addEventListener("mousemove",  () => { if (_tipTarget === sec.el && _snap) positionTooltip(sec.el); });
@@ -791,6 +1089,381 @@ function mountBar(bar) {
     Object.assign(bar.style, { position: "fixed", top: "6px", right: "8px", zIndex: "9999" });
     document.body.appendChild(bar);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 监视面板窗口（点击 tools 按钮打开；风格参考 ADLX Monitor 面板）
+// 窗口内容后续按需求填充（时序曲线等），当前仅标题栏 + 关闭按钮 + 空 body
+// ---------------------------------------------------------------------------
+
+let _dock = null;
+
+function buildDock() {
+  if (_dock) return _dock;
+
+  const dock = document.createElement("div");
+  dock.className = "xpusys-dock";
+  dock.hidden    = true;
+
+  // Header: 标题 + 副标题（设备名）+ 关闭按钮（可拖动，ADLX 风格）
+  const header = document.createElement("div");
+  header.className = "xpusys-dock-header";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "xpusys-dock-titlewrap";
+
+  const title = document.createElement("div");
+  title.className   = "xpusys-dock-title";
+  title.textContent = t("火花监控", "Spark Monitor");
+
+  const subtitle = document.createElement("div");
+  subtitle.className = "xpusys-dock-subtitle";
+  // 显卡全名（无 id 后缀）+ 刷新间隔
+  const dev0 = _snap ? resolveDeviceName(_snap.device_name || "") : "";
+  const ms0  = Math.max(200, Number(getSetting(S.refreshMs, 1000)) || 1000);
+  subtitle.textContent = dev0
+    ? `${dev0} · ${t("刷新", "Refresh")} ${ms0}ms`
+    : "";
+
+  titleWrap.appendChild(title);
+  titleWrap.appendChild(subtitle);
+
+  const close = document.createElement("button");
+  close.type        = "button";
+  close.className   = "xpusys-dock-close";
+  close.textContent = "×";
+  close.addEventListener("click", () => setDockOpen(false));
+
+  header.appendChild(titleWrap);
+  header.appendChild(close);
+
+  // Body: 按用户配置（排序 + 开关）创建时序图 box
+  const body = document.createElement("div");
+  body.className = "xpusys-dock-body";
+  buildDockCharts(body);
+
+  dock.appendChild(header);
+  dock.appendChild(body);
+  document.body.appendChild(dock);
+
+  dock._subtitle = subtitle;   // 供 renderSnap 实时更新设备名
+  enableDockDrag(dock, header);
+  _dock = dock;
+  return dock;
+}
+
+// 按顺序（顺序 + 开关）创建 box 列表；order 缺省时读设置
+function buildDockCharts(body, order) {
+  _dockCharts.length = 0;
+  const list = order || getSparkOrder();
+  list.forEach((item, i) => {
+    if (item.on === false) return;                  // 已关闭的监控不显示
+    const cfg = DOCK_CHARTS.find((c) => c.key === item.key);
+    if (!cfg) return;
+    const box = document.createElement("div");
+    box.className = "xpusys-dock-chart-box";
+    box.dataset.color = cfg.color;
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "xpusys-dock-chart-title";
+    titleEl.textContent = cfg.title();
+
+    const spark = makeDockSparkline(String(i));
+    box.appendChild(titleEl);      // 标题 overlay 在火花图左上角
+    box.appendChild(spark.svg);    // 火花图撑满整个 box
+
+    body.appendChild(box);
+    _dockCharts.push({ cfg, box, titleEl, spark, history: [] });
+  });
+}
+
+// 设置中开关/排序变化后，立即重建窗口内的 box（保留窗口与标题栏）
+function rebuildDockCharts(order) {
+  if (!_dock) return;
+  const body = _dock.querySelector(".xpusys-dock-body");
+  if (!body) return;
+  body.innerHTML = "";
+  buildDockCharts(body, order);
+  if (!_dock.hidden) {
+    for (const c of _dockCharts) renderDockSparkline(c);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sparkline：实时时序平滑折线图（SVG），支持多 box
+//   · 无坐标轴 · 平滑曲线（Catmull-Rom → Bezier）· 2px 亮色线 · 渐变面积 + 微光
+//   · 每 box 独立：配置（标题/配色/数据源）+ 历史缓冲 + SVG 实例
+// ---------------------------------------------------------------------------
+
+// 时序图配置：新增指标只需在此追加一项
+// critical(s) 与胶囊颜色阈值一致——true 时对应 box 显示统一半透明红背景
+const DOCK_CHARTS = [
+  { key: "load",  color: "cyan",   title: () => t("GPU 负载", "GPU Load"),
+    value: (s) => s.gpu_load_pct ?? 0,
+    critical: (s) => (s.gpu_load_pct ?? 0) > 95 },
+  { key: "vram",  color: "green",  title: () => t("显存占用", "VRAM Usage"),
+    value: (s) => (s.vram_total_gb > 0 ? (s.vram_driver_used_gb / s.vram_total_gb) * 100 : 0),
+    critical: (s) => s.vram_total_gb > 0 && (s.vram_driver_used_gb / s.vram_total_gb) > 0.95 },
+  { key: "power", color: "purple", title: () => t("功耗", "Power"),
+    value: (s) => (s.power_available && s.tgp_w > 0 ? (s.power_w / s.tgp_w) * 100 : -1),
+    critical: (s) => s.power_available && s.tgp_w > 0 && (s.power_w / s.tgp_w) > 0.95 },
+  { key: "cpu",   color: "blue",   title: () => t("CPU 占用", "CPU Usage"),
+    value: (s) => s.cpu_pct ?? 0,
+    critical: (s) => (s.cpu_pct ?? 0) > 80 },
+  { key: "ram",   color: "orange", title: () => t("内存占用", "Memory Usage"),
+    value: (s) => s.ram_pct ?? 0,
+    critical: (s) => (s.ram_pct ?? 0) > 90 },
+];
+
+// 火花监控显示配置：默认全部开启，顺序即 DOCK_CHARTS 顺序
+const SPARK_CHART_DEFAULTS = DOCK_CHARTS.map((c) => ({ key: c.key, on: true }));
+
+// 读取用户配置（顺序 + 开关），校验 key 合法性并补齐缺失项
+function getSparkOrder() {
+  let raw;
+  try { raw = getSetting(S.sparkCharts, ""); } catch (_) {}
+  if (raw) {
+    try {
+      const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (Array.isArray(arr) && arr.length) {
+        const keys = DOCK_CHARTS.map((c) => c.key);
+        const valid = arr.filter((x) => x && keys.includes(x.key));
+        for (const c of DOCK_CHARTS) {
+          if (!valid.some((x) => x.key === c.key)) valid.push({ key: c.key, on: true });
+        }
+        return valid;
+      }
+    } catch (_) {}
+  }
+  return SPARK_CHART_DEFAULTS.map((x) => ({ ...x }));
+}
+
+const _dockCharts = [];   // 实例列表：{ cfg, box, titleEl, spark, history }
+
+function pushChartHistory(inst, snap) {
+  const v = inst.cfg.value(snap);
+  if (!Number.isFinite(v) || v < 0) return;   // 指标不可用（如功耗不支持）跳过
+  // 采样节奏跟随设置的刷新间隔（与胶囊同 tick）；点数动态保持 ~60s 窗口
+  const ms = Math.max(200, Number(getSetting(S.refreshMs, 1000)) || 1000);
+  const limit = Math.max(15, Math.round(60000 / ms));
+  inst.history.push(v);
+  if (inst.history.length > limit)
+    inst.history.splice(0, inst.history.length - limit);
+}
+
+// suffix 保证多个 sparkline 的 SVG id（gradient/filter）全局唯一
+function makeDockSparkline(suffix) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 300 80");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("class", "xpusys-dock-spark");
+
+  const defs = document.createElementNS(NS, "defs");
+
+  const grad = document.createElementNS(NS, "linearGradient");
+  grad.id = `xpusys-spark-grad-${suffix}`;
+  grad.setAttribute("x1", "0"); grad.setAttribute("y1", "0");
+  grad.setAttribute("x2", "0"); grad.setAttribute("y2", "1");
+  const gTop = document.createElementNS(NS, "stop");
+  gTop.setAttribute("offset", "0%");
+  gTop.setAttribute("class", "spark-stop-a");
+  const gBot = document.createElementNS(NS, "stop");
+  gBot.setAttribute("offset", "100%");
+  gBot.setAttribute("class", "spark-stop-b");
+  grad.appendChild(gTop);
+  grad.appendChild(gBot);
+
+  const glowF = document.createElementNS(NS, "filter");
+  glowF.id = `xpusys-spark-glow-${suffix}`;
+  glowF.setAttribute("x", "-20%"); glowF.setAttribute("y", "-20%");
+  glowF.setAttribute("width", "140%"); glowF.setAttribute("height", "140%");
+  const blur = document.createElementNS(NS, "feGaussianBlur");
+  blur.setAttribute("stdDeviation", "2.5");
+  glowF.appendChild(blur);
+
+  defs.appendChild(grad);
+  defs.appendChild(glowF);
+
+  const area = document.createElementNS(NS, "path");
+  area.setAttribute("class", "spark-area");
+  area.setAttribute("fill", `url(#xpusys-spark-grad-${suffix})`);
+  const glow = document.createElementNS(NS, "path");
+  glow.setAttribute("class", "spark-glow");
+  glow.setAttribute("filter", `url(#xpusys-spark-glow-${suffix})`);
+  const line = document.createElementNS(NS, "path");
+  line.setAttribute("class", "spark-line");
+
+  svg.appendChild(defs);
+  svg.appendChild(area);
+  svg.appendChild(glow);
+  svg.appendChild(line);
+  return { svg, area, glow, line };
+}
+
+const SPARK_W = 300, SPARK_H = 80;
+// 折线跑满全图：标题是带背景的 chip（z-index 盖在折线上层），
+// 折线最高点穿过标题区域也保持可读，因此顶部不再避让。
+const SPARK_TOP = 4, SPARK_BOT = 4;
+
+function sparkPoints(values) {
+  const n = values.length;
+  if (n === 0) return [];
+  return values.map((v, i) => {
+    const x = n === 1 ? SPARK_W / 2 : (i / (n - 1)) * SPARK_W;
+    const norm = Math.min(100, Math.max(0, v));
+    const y = SPARK_H - SPARK_BOT - (norm / 100) * (SPARK_H - SPARK_TOP - SPARK_BOT);
+    return { x, y };
+  });
+}
+
+// Catmull-Rom 样条 → 三次贝塞尔，实现平滑曲线
+function sparkSmoothPath(points) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  let d = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(points.length - 1, i + 2)];
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  return d;
+}
+
+function renderDockSparkline(inst) {
+  if (!inst?.spark) return;
+  const spark = inst.spark;
+  const pts = sparkPoints(inst.history);
+  if (pts.length === 0) {
+    spark.area.setAttribute("d", "");
+    spark.glow.setAttribute("d", "");
+    spark.line.setAttribute("d", "");
+    return;
+  }
+  const lineD = sparkSmoothPath(pts);
+  spark.line.setAttribute("d", lineD);
+  spark.glow.setAttribute("d", lineD);
+  const last = pts[pts.length - 1];
+  const first = pts[0];
+  spark.area.setAttribute("d",
+    lineD + ` L ${last.x.toFixed(2)} ${SPARK_H} L ${first.x.toFixed(2)} ${SPARK_H} Z`);
+}
+
+// ---------------------------------------------------------------------------
+// 窗口定位：首次（无存档）左缘对齐 ☰ 胶囊下方智能弹出；
+// 拖动后写入 localStorage，刷新/重开后恢复上次位置（对齐 ADLX 面板行为）
+// ---------------------------------------------------------------------------
+
+const DOCK_POS_KEY = "XPUSYS_Mon.DockPosition";
+
+function applyDockPosition(dock, left, top, save) {
+  const w = dock.offsetWidth  || 360;
+  const h = dock.offsetHeight || 320;
+  const maxL = Math.max(8, window.innerWidth  - w - 8);
+  const maxT = Math.max(8, window.innerHeight - h - 8);
+  const cl = Math.min(Math.max(8, left), maxL);
+  const ct = Math.min(Math.max(8, top),  maxT);
+  dock.style.left  = cl + "px";
+  dock.style.top   = ct + "px";
+  dock.style.right = "auto";
+  dock._posRestored = true;
+  if (save) {
+    try { localStorage.setItem(DOCK_POS_KEY, JSON.stringify({ left: cl, top: ct })); } catch (_) {}
+  }
+}
+
+function restoreDockPosition(dock) {
+  try {
+    const raw = localStorage.getItem(DOCK_POS_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.left !== "number" || typeof parsed?.top !== "number") return false;
+    applyDockPosition(dock, parsed.left, parsed.top, false);
+    return true;
+  } catch (_) {}
+  return false;
+}
+
+// 首次打开：左缘对齐 ☰ 胶囊；胶囊在下半屏 → 弹上方，否则弹下方（不写存档）
+function anchorDockToCapsule(dock) {
+  const btn = document.querySelector(".xpusys-tools-section");
+  if (!btn) return;
+  const aRect = btn.getBoundingClientRect();
+  const w = dock.offsetWidth  || 360;
+  const h = dock.offsetHeight || 320;
+  let left = aRect.left;                                  // 左边缘对齐
+  left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+  const inBottomHalf = aRect.top > window.innerHeight / 2;
+  let top;
+  if (inBottomHalf) {
+    top = Math.max(8, aRect.top - h - 8);                 // 弹上方
+  } else {
+    top = Math.min(aRect.bottom + 8, window.innerHeight - h - 8);  // 弹下方
+  }
+  applyDockPosition(dock, left, top, false);
+}
+
+function positionDock(dock) {
+  if (dock._posRestored) return;        // 本次会话已定位过，保持
+  if (restoreDockPosition(dock)) return; // localStorage 有存档 → 恢复
+  anchorDockToCapsule(dock);             // 无存档 → 对齐胶囊
+}
+
+function setDockOpen(open) {
+  const dock = buildDock();
+  dock.hidden = !open;
+  if (open) {
+    requestAnimationFrame(() => {
+      if (!_dock || _dock.hidden) return;
+      positionDock(dock);
+    });
+  }
+}
+
+function toggleDock() {
+  const dock = buildDock();
+  setDockOpen(dock.hidden);
+}
+
+function enableDockDrag(dock, handle) {
+  let dragState = null;
+
+  const onMove = (event) => {
+    if (!dragState) return;
+    applyDockPosition(dock, event.clientX - dragState.ox, event.clientY - dragState.oy, true);  // 拖动即存档
+  };
+  const stopDrag = () => {
+    if (!dragState) return;
+    dragState = null;
+    window.removeEventListener("pointermove",   onMove);
+    window.removeEventListener("pointerup",     stopDrag);
+    window.removeEventListener("pointercancel", stopDrag);
+  };
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest("button")) return;   // 点关闭按钮不触发拖动
+    const rect = dock.getBoundingClientRect();
+    dragState = { ox: event.clientX - rect.left, oy: event.clientY - rect.top };
+    handle.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove",   onMove);
+    window.addEventListener("pointerup",     stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+    event.preventDefault();
+  });
+
+  // 窗口尺寸变化时把位置 clamp 回视口内
+  window.addEventListener("resize", () => {
+    if (!_dock || _dock.hidden) return;
+    const r = _dock.getBoundingClientRect();
+    applyDockPosition(_dock, r.left, r.top, false);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -825,6 +1498,29 @@ function renderSnap(snap) {
   renderSpec(snap);
   renderPredictor();   // re-render with latest vram_total_gb from snap
   applyVisibility();
+
+  // 监视面板窗口标题栏：显卡全名（无 id）+ 刷新间隔，实时跟随
+  if (_dock && !_dock.hidden && _dock._subtitle) {
+    const dev = resolveDeviceName(snap.device_name || "");
+    const ms  = Math.max(200, Number(getSetting(S.refreshMs, 1000)) || 1000);
+    const txt = dev ? `${dev} · ${t("刷新", "Refresh")} ${ms}ms` : "";
+    if (_dock._subtitle.textContent !== txt) _dock._subtitle.textContent = txt;
+  }
+
+  // 时序数据始终记录（节奏跟随设置的刷新间隔），窗口打开时渲染全部折线
+  const titleSep = en() ? ": " : "：";
+  for (const c of _dockCharts) {
+    pushChartHistory(c, snap);
+    c.box.classList.toggle("is-critical", !!c.cfg.critical(snap));   // 临界告警背景
+    // 标题实时数值：如 "GPU 负载：45%"（功耗不可用时 N/A）
+    const v = c.cfg.value(snap);
+    const valTxt = v >= 0 ? Math.round(v) + "%" : "N/A";
+    const titleTxt = c.cfg.title() + titleSep + valTxt;
+    if (c.titleEl.textContent !== titleTxt) c.titleEl.textContent = titleTxt;
+  }
+  if (_dock && !_dock.hidden) {
+    for (const c of _dockCharts) renderDockSparkline(c);
+  }
 }
 
 function renderCPU(snap) {
@@ -879,19 +1575,32 @@ function renderPWR(snap) {
 
   if (!snap.power_available) {
     setVal("pwr", "PWR N/A", "xpusys-na");
-    const lock = document.createElement("span");
-    lock.className   = "xpusys-lock";
-    lock.textContent = "🔒";
-    lock.title       = "点击了解详情";
-    lock.addEventListener("click", e => {
-      e.stopPropagation();
-      const dev = shortDeviceName(snap.device_name);
-      const msg = snap.is_admin
-        ? "未找到功率域 — 请检查驱动版本。"
-        : `${dev} 功率数据需要管理员权限。\n\n以管理员身份运行 ComfyUI 即可启用实时功率监控。`;
-      alert("⚡ XPUSYSMonitor — 功率说明\n\n" + msg);
-    });
-    sec.el.appendChild(lock);
+    // "需要管理员权限"提示仅 Intel 适用——AMD(ADLX/amdsmi)/NVIDIA 的功耗读取
+    // 不需要提权，不可用是驱动能力问题，因此非 Intel 不显示 🔒
+    if (snap.gpu_vendor === "intel") {
+      const lock = document.createElement("span");
+      lock.className   = "xpusys-lock";
+      lock.textContent = "🔒";
+      lock.title       = en() ? "Click for details" : "点击了解详情";
+      lock.addEventListener("click", e => {
+        e.stopPropagation();
+        const dev = shortDeviceName(snap.device_name);
+        let title, msg;
+        if (en()) {
+          title = "⚡ XPUSYSMonitor — Power Notice\n\n";
+          msg = snap.is_admin
+            ? "No power domains found — please check your driver version."
+            : `${dev} power data requires administrator privileges.\n\nRun ComfyUI as administrator to enable real-time power monitoring.`;
+        } else {
+          title = "⚡ XPUSYSMonitor — 功率说明\n\n";
+          msg = snap.is_admin
+            ? "未找到功率域 — 请检查驱动版本。"
+            : `${dev} 功率数据需要管理员权限。\n\n以管理员身份运行 ComfyUI 即可启用实时功率监控。`;
+        }
+        alert(title + msg);
+      });
+      sec.el.appendChild(lock);
+    }
     return;
   }
 
@@ -1717,6 +2426,16 @@ app.registerExtension({
                  "Choose which GPU to monitor (multi-GPU). Defaults to ComfyUI's primary device shown in the log (Device: xpu:N); manual choice is remembered across restarts"),
       type: makeGPUIndexType(), defaultValue: -1,
       category: [NS, t("\uE005显卡监控", "\uE005GPU Monitor"), t("\uE006监视显卡", "\uE006Monitored GPU")],
+    });
+
+    app.ui.settings.addSetting({
+      id: S.sparkCharts,
+      name: t("火花监控排序与显示", "Spark Charts Order & Visibility"),
+      tooltip: t("开关各监控图，按住 ≡ 上下拖拽调整顺序（即时生效）",
+                 "Toggle charts on/off and drag ≡ to reorder (applies instantly)"),
+      type: makeSparkSortType(),
+      defaultValue: JSON.stringify(SPARK_CHART_DEFAULTS),
+      category: [NS, t("\uE005火花监控", "\uE005Spark Monitor"), t("\uE006排序与显示", "\uE006Order & Visibility")],
     });
 
     // 启动时应用已保存的显卡选择：

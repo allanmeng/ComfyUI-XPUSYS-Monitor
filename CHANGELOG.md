@@ -6,6 +6,26 @@
 
 ## English
 
+### v1.0.8 — 2026-08-28
+
+#### ✨ New Features
+
+- **Spark Monitor panel** — a new `☰` capsule (independent, right after the GPU group) opens a draggable monitor window (ADLX-style header with teal-purple gradient):
+  - **5 live sparkline charts**: GPU Load, VRAM Usage, Power, CPU Usage, Memory Usage — smooth Catmull-Rom curves, 2px colored lines, gradient area fill and glow, no axes / no data points, charts fill the box with the title overlaid (chip background) showing a live value (`GPU Load: 45%`).
+  - **Per-chart critical alert**: when a metric crosses its threshold (load/VRAM/power > 95%, CPU > 80%, RAM > 90%), that box gains a unified translucent red background.
+  - **Sampling follows the Refresh Interval setting** (~60s rolling window, points auto-scale).
+  - **Settings → Spark Monitor → Order & Visibility**: toggle each chart on/off and drag `≡` to reorder — applies instantly, persisted across restarts.
+  - **Smart positioning**: first open anchors to the capsule (left-aligned, opens above/below by screen half); after dragging, position is saved to `localStorage` and restored on reload.
+  - Window subtitle shows the full GPU name (ID stripped) + refresh interval.
+  - Fully bilingual (EN/CN).
+- **PWR admin notice is Intel-only + English**: the `🔒` "requires administrator" notice now only appears on Intel GPUs (AMD/NVIDIA power needs no elevation — unavailability there is a driver capability issue) and the alert is translated.
+
+#### 🐛 Bug Fixes
+
+- *(no backend changes in this release)*
+
+---
+
 ### v1.0.7.1 — 2026-08-28
 
 #### 🐛 Bug Fixes
@@ -205,6 +225,26 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.8 — 2026-08-28
+
+#### ✨ 新功能
+
+- **火花监控面板**——新增独立 `☰` 胶囊（位于 GPU 组之后），点击弹出可拖动监控窗口（ADLX 风格头部：青紫渐变）：
+  - **5 张实时时序图**：GPU 负载、显存占用、功耗、CPU 占用、内存占用——平滑曲线（Catmull-Rom）、2px 彩色折线、渐变面积填充 + 微光、无坐标轴/无数据点；图撑满 box，标题悬浮左上角（chip 背景）并实时显示数值（`GPU 负载：45%`）。
+  - **逐图临界告警**：指标达阈值（负载/显存/功耗 >95%、CPU >80%、内存 >90%）时该 box 出现统一半透明红背景。
+  - **采样跟随"刷新间隔"设置**（约 60 秒滚动窗口，点数自动适配）。
+  - **设置 → 火花监控 → 排序与显示**：每项可开关，按住 `≡` 上下拖拽排序——即时生效、重启保持。
+  - **智能定位**：首次打开对齐 ☰ 胶囊（左缘对齐，按屏幕上下半区智能弹出）；拖动后位置存入 `localStorage`，刷新恢复。
+  - 窗口副标题显示显卡全名（去 ID）+ 刷新间隔。
+  - 完整中英双语。
+- **PWR 管理员提示仅 Intel 且补英文**：`🔒`「需要管理员权限」提示现在只在 Intel 显卡上出现（AMD/NVIDIA 功耗读取无需提权——不可用属于驱动能力问题），提示内容补齐英文版。
+
+#### 🐛 Bug 修复
+
+- *（本版本无后端改动）*
+
+---
 
 ### v1.0.7.1 — 2026-08-28
 
