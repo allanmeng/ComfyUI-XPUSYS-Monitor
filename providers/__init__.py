@@ -232,13 +232,19 @@ def _is_amd_rocme() -> bool:
     """
     Check if torch.cuda is backed by AMD ROCm.
 
-    Returns True if torch.version.roc is not None (AMD ROCm PyTorch).
-    Returns False if torch.version.roc is None (NVIDIA or standard CUDA).
+    AMD ROCm PyTorch builds may expose the marker under either name:
+      - torch.version.roc  — classic ROCm builds (True or version string)
+      - torch.version.hip  — newer ROCm builds (e.g. PyTorch 2.14+rocm10.1
+        where `roc` is None but `hip` carries the HIP version string)
+    Returns True if either marker is present, False otherwise (NVIDIA/CUDA).
     """
     try:
         import torch
-        # torch.version.roc: True/str = AMD ROCm, None = NVIDIA/other
-        return torch.version.roc is not None
+        if torch.version.roc is not None:
+            return True
+        if getattr(torch.version, "hip", None):
+            return True
+        return False
     except Exception:
         return False
 
