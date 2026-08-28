@@ -1147,6 +1147,7 @@ function buildDock() {
   document.body.appendChild(dock);
 
   dock._subtitle = subtitle;   // 供 renderSnap 实时更新设备名
+  dock._titleEl  = title;      // 供 renderSnap 语言切换时更新标题
   enableDockDrag(dock, header);
   _dock = dock;
   return dock;
@@ -1499,12 +1500,18 @@ function renderSnap(snap) {
   renderPredictor();   // re-render with latest vram_total_gb from snap
   applyVisibility();
 
-  // 监视面板窗口标题栏：显卡全名（无 id）+ 刷新间隔，实时跟随
-  if (_dock && !_dock.hidden && _dock._subtitle) {
-    const dev = resolveDeviceName(snap.device_name || "");
-    const ms  = Math.max(200, Number(getSetting(S.refreshMs, 1000)) || 1000);
-    const txt = dev ? `${dev} · ${t("刷新", "Refresh")} ${ms}ms` : "";
-    if (_dock._subtitle.textContent !== txt) _dock._subtitle.textContent = txt;
+  // 监视面板窗口标题栏：标题 + 显卡全名（无 id）+ 刷新间隔，语言/数据实时跟随
+  if (_dock && !_dock.hidden) {
+    if (_dock._titleEl) {
+      const tTxt = t("火花监控", "Spark Monitor");
+      if (_dock._titleEl.textContent !== tTxt) _dock._titleEl.textContent = tTxt;
+    }
+    if (_dock._subtitle) {
+      const dev = resolveDeviceName(snap.device_name || "");
+      const ms  = Math.max(200, Number(getSetting(S.refreshMs, 1000)) || 1000);
+      const txt = dev ? `${dev} · ${t("刷新", "Refresh")} ${ms}ms` : "";
+      if (_dock._subtitle.textContent !== txt) _dock._subtitle.textContent = txt;
+    }
   }
 
   // 时序数据始终记录（节奏跟随设置的刷新间隔），窗口打开时渲染全部折线
