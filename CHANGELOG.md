@@ -6,6 +6,15 @@
 
 ## English
 
+### v1.0.7.1 — 2026-08-28
+
+#### 🐛 Bug Fixes
+
+- **AMD misdetected as NVIDIA on new ROCm PyTorch (2.14+)**: On PyTorch builds such as `2.14.0+rocm10.1`, `torch.version.roc` is `None` (the marker moved to `torch.version.hip`), so AMD ROCm machines with a usable `torch.cuda` fell into `NvidiaProvider` — PWR stayed empty (no NVML) and SPEC had no AMD device identity.
+  - Fix: `_is_amd_rocme()` now accepts either marker — `torch.version.roc` (classic builds) or `torch.version.hip` (2.14+ builds). AMD machines now correctly reach `AMDProvider` and, on Windows, the ADLX telemetry path (power included).
+
+---
+
 ### v1.0.7 — 2026-08-28
 
 #### ✨ New Features
@@ -196,6 +205,15 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.7.1 — 2026-08-28
+
+#### 🐛 Bug 修复
+
+- **新版 ROCm PyTorch（2.14+）上 AMD 被误判为 NVIDIA**：在 `2.14.0+rocm10.1` 等新构建中 `torch.version.roc` 为 `None`（标记迁移到了 `torch.version.hip`），导致 torch.cuda 可用的 AMD ROCm 机器落入 `NvidiaProvider`——PWR 为空（无 NVML）且 SPEC 读不到 AMD 设备标识。
+  - 修复：`_is_amd_rocme()` 同时接受任一标记——`torch.version.roc`（经典构建）或 `torch.version.hip`（2.14+ 构建）。AMD 机器现在能正确进入 `AMDProvider`，并在 Windows 上走 ADLX 遥测路径（含功耗）。
+
+---
 
 ### v1.0.7 — 2026-08-28
 
