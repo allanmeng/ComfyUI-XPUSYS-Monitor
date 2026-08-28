@@ -10,8 +10,8 @@ pynvml
 ADLXPybind; platform_system == "Windows"
 
 # AMD GPU monitoring — secondary path on ROCm / Linux (official successor to rocm_smi)
-# Only needed when using AMD GPU with ROCm; safe to install on other systems
-# amdsmi
+# Installed only on Linux (pip marker); Windows AMD uses ADLXPybind above
+amdsmi; sys_platform == "linux"
 
 # ---------------------------------------------------------------------------
 # The following are provided by ComfyUI itself — DO NOT add them here.
