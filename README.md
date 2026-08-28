@@ -34,6 +34,9 @@ The status bar contains eight capsules from left to right, split into three grou
 
 ### ☰ Spark Monitor — Live Charts Panel
 
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/e2c89e78-037c-48a6-9883-30faef08322c" />
+
+
 A draggable monitor window (ADLX-style header with teal-purple gradient) opened by the `☰` capsule:
 
 - **5 live sparkline charts**: GPU Load, VRAM Usage, Power, CPU Usage, Memory Usage — smooth curves, gradient area fill + glow, no axes; the title overlays the chart with a live value (`GPU Load: 45%`).
