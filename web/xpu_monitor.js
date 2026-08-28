@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.6";
+const VERSION = "1.0.7";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -555,24 +555,39 @@ function injectStyles() {
       border: 1px solid var(--xpusys-tooltip-border);
       border-radius: 6px;
       padding: 8px 12px;
-      font-size: 16px;
+      font-size: 14px;
       font-family: 'JetBrains Mono', monospace;
       color: var(--xpusys-tooltip-text);
       line-height: 1.7;
       pointer-events: none;
       z-index: 99999;
-      min-width: 220px;
+      min-width: 190px;
+      max-width: 320px;
       box-shadow: var(--xpusys-shadow-tip);
-      white-space: pre;
+      /* pre-wrap: 保留来源多行的 \n 换行，同时允许超宽内容折行 */
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    /* SPEC 规格浮层内容多，保持更宽 */
+    .xpusys-tooltip-spec { min-width: 250px; }
+    /* VRAM 浮层文案已精简，宽度回归默认；行内容放不下时自然折行而非省略号 */
+    .xpusys-tooltip-vram .xpusys-tooltip-key {
+      max-width: none; white-space: normal; text-overflow: clip;
     }
     .xpusys-tooltip-title {
-      color: var(--xpusys-tooltip-title); font-weight: 700; font-size: 17px; margin-bottom: 4px;
+      color: var(--xpusys-tooltip-title); font-weight: 700; font-size: 15px; margin-bottom: 4px;
       border-bottom: 1px solid var(--xpusys-tooltip-border); padding-bottom: 3px;
     }
     .xpusys-tooltip-row { display: flex; justify-content: space-between; gap: 16px; }
-    .xpusys-tooltip-key { color: var(--xpusys-tooltip-key); }
+    .xpusys-tooltip-key {
+      color: var(--xpusys-tooltip-key);
+      /* 长内容（如预测胶囊的模型名）放不下时省略号缩略 */
+      max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* 子级条目缩进（显存缺口/压力等，配合 tipRow 第 4 参数） */
+    .xpusys-tip-sub { padding-left: 1.4em; }
     .xpusys-tooltip-val { color: var(--xpusys-tooltip-val); font-weight: 600; }
-    .xpusys-tooltip-note{ color: var(--xpusys-tooltip-note); font-size: 15px; margin-top: 4px; }
+    .xpusys-tooltip-note{ color: var(--xpusys-tooltip-note); font-size: 12px; margin-top: 4px; }
   `;
   document.head.appendChild(style);
 }
@@ -614,10 +629,11 @@ function hideTooltip() {
   _tipTarget = null;
 }
 
-function tipRow(key, val, color) {
+function tipRow(key, val, color, sub) {
+  const kc = sub ? ' class="xpusys-tooltip-key xpusys-tip-sub"' : ' class="xpusys-tooltip-key"';
   const vc = color ? ` style="color:${color}"` : "";
   return `<div class="xpusys-tooltip-row">` +
-         `<span class="xpusys-tooltip-key">${key}</span>` +
+         `<span${kc}>${key}</span>` +
          `<span class="xpusys-tooltip-val"${vc}>${val}</span>` +
          `</div>`;
 }
@@ -905,12 +921,12 @@ function renderPredictor() {
   const risk  = isEn ? label.en : label.zh;
 
   const html = isEn
-    ? `Model:<span style="color:${c}">${total.toFixed(2)}G</span>/${vEff}G`
+    ? `Success Rate:<span style="color:${c}">${rate}%</span>`
       + ` | <span style="color:${c}">${risk}</span>`
-      + ` | Success Rate:<span style="color:${c}">${rate}%</span>`
-    : `<span class="pred-zh">模型体量:</span><span style="color:${c}">${total.toFixed(2)}G</span>/${vEff}G`
-      + ` | <span class="pred-zh">状态:</span><span class="pred-zh" style="color:${c}">${risk}</span>`
-      + ` | <span class="pred-zh">预测成功率:</span><span style="color:${c}">${rate}%</span>`;
+      + ` | Model:<span style="color:${c}">${total.toFixed(2)}G</span>/${vEff}G`
+    : `<span class="pred-zh">成功率:</span><span style="color:${c}">${rate}%</span>`
+      + ` | <span class="pred-zh" style="color:${c}">${risk}</span>`
+      + ` | <span class="pred-zh">模型:</span><span style="color:${c}">${total.toFixed(2)}G</span>/${vEff}G`;
   setHTML("predictor", html);
 }
 
@@ -1017,6 +1033,13 @@ function applyFontSize(val) {
 function showTip(key, snap) {
   const el = _sec[key]?.el;
   if (!el) return;
+  // SPEC 规格浮层内容多保持更宽；VRAM 行内容长加宽且不缩略；其余收窄
+  if (_tipEl) {
+    let cls = "xpusys-tooltip";
+    if (key === "specs") cls += " xpusys-tooltip-spec";
+    else if (key === "vram") cls += " xpusys-tooltip-vram";
+    _tipEl.className = cls;
+  }
   const builders = { predictor: buildPredictorTip,
                      cpu: buildCPUTip, ram: buildRAMTip, engine: buildEngineTip,
                      vram: buildVRAMTip, rsv: buildRSVTip, pwr: buildPWRTip,
@@ -1029,20 +1052,20 @@ function buildCPUTip(snap, eng) {
   const pct  = snap.cpu_pct      ?? 0;
   const freq = snap.cpu_freq_ghz ?? 0;
   const c    = pct > 80 ? "var(--xpusys-crit)" : pct > 50 ? "var(--xpusys-warn)" : "var(--xpusys-ok)";
+  // 型号只保留前面部分：去掉 " CPU @ 2.90GHz" 后缀（频率已有单独一行）
+  const model = (snap.cpu_model || "").replace(/\s*CPU\s*@[\s\S]*$/i, "").trim();
   if (eng) {
     return tipTitle("🖥️ CPU")
       + tipRow("Utilisation", pct.toFixed(1) + " %", c)
-      + (snap.cpu_model   ? tipRow("Model",   snap.cpu_model) : "")
-      + (freq > 0         ? tipRow("Freq",    freq.toFixed(2) + " GHz") : "")
-      + (snap.cpu_threads ? tipRow("Threads", String(snap.cpu_threads)) : "")
-      + tipNote("Source: psutil · cpu_percent / wmic CurrentClockSpeed\nRegistry: ProcessorNameString");
+      + (model         ? tipRow("Model",   model) : "")
+      + (freq > 0      ? tipRow("Freq",    freq.toFixed(2) + " GHz") : "")
+      + (snap.cpu_threads ? tipRow("Threads", String(snap.cpu_threads)) : "");
   }
   return tipTitle("🖥️ 处理器")
     + tipRow("占用率",  pct.toFixed(1) + " %", c)
-    + (snap.cpu_model   ? tipRow("型号",   snap.cpu_model) : "")
-    + (freq > 0         ? tipRow("频率",   freq.toFixed(2) + " GHz") : "")
-    + (snap.cpu_threads ? tipRow("线程数", String(snap.cpu_threads)) : "")
-    + tipNote("来源: psutil · cpu_percent / wmic CurrentClockSpeed\n注册表: ProcessorNameString");
+    + (model         ? tipRow("型号",   model) : "")
+    + (freq > 0      ? tipRow("频率",   freq.toFixed(2) + " GHz") : "")
+    + (snap.cpu_threads ? tipRow("线程数", String(snap.cpu_threads)) : "");
 }
 
 function buildRAMTip(snap, eng) {
@@ -1061,15 +1084,13 @@ function buildRAMTip(snap, eng) {
       + tipRow("Total",   total.toFixed(1) + " GB")
       + tipRow("Used",    used.toFixed(1)  + " GB", c)
       + tipRow("Free",    free.toFixed(1)  + " GB", "var(--xpusys-ok)")
-      + (commitUsed > 0 ? tipRow("Commit", commitStr, "var(--xpusys-purple)") : "")
-      + tipNote("Source: psutil · virtual_memory\nCommit: GlobalMemoryStatusEx");
+      + (commitUsed > 0 ? tipRow("Commit", commitStr, "var(--xpusys-purple)") : "");
   }
   return tipTitle("💾 系统内存")
     + tipRow("总量",   total.toFixed(1) + " GB")
     + tipRow("已用",   used.toFixed(1)  + " GB", c)
     + tipRow("空闲",   free.toFixed(1)  + " GB", "var(--xpusys-ok)")
-    + (commitUsed > 0 ? tipRow("虚拟内存", commitStr, "var(--xpusys-purple)") : "")
-    + tipNote("来源: psutil · virtual_memory\n虚拟内存: GlobalMemoryStatusEx");
+    + (commitUsed > 0 ? tipRow("虚拟内存", commitStr, "var(--xpusys-purple)") : "");
 }
 
 function buildEngineTip(snap, eng) {
@@ -1082,16 +1103,12 @@ function buildEngineTip(snap, eng) {
     return tipTitle("📊 GPU Engine")
       + tipRow("Load",  load.toFixed(1) + " %", c)
       + (freq > 0  ? tipRow("Clock", Math.round(freq) + " MHz") : "")
-      + (temp >= 0 ? tipRow("Temp",  Math.round(temp) + " °C", tc) : "")
-      + tipNote("Source: Intel Level Zero · zesEngineGetActivity\n" +
-                "        zesFrequencyGetState · zesTemperatureGetState");
+      + (temp >= 0 ? tipRow("Temp",  Math.round(temp) + " °C", tc) : "");
   }
   return tipTitle("📊 GPU 引擎")
     + tipRow("负载", load.toFixed(1) + " %", c)
     + (freq > 0  ? tipRow("频率", Math.round(freq) + " MHz") : "")
-    + (temp >= 0 ? tipRow("温度", Math.round(temp) + " °C", tc) : "")
-    + tipNote("来源: Intel Level Zero · zesEngineGetActivity\n" +
-              "      zesFrequencyGetState · zesTemperatureGetState");
+    + (temp >= 0 ? tipRow("温度", Math.round(temp) + " °C", tc) : "");
 }
 
 function buildVRAMTip(snap, eng) {
@@ -1111,20 +1128,18 @@ function buildVRAMTip(snap, eng) {
     return tipTitle("🧠 VRAM Breakdown")
       + tipRow("Total",             g2(total))
       + tipRow("Current Used",      g2(used),   c)
-      + tipRow("  System & Env (display & driver)",     g2(sysEnv), "var(--xpusys-text-dim)")
-      + tipRow("  Model & Compute (loaded model)",      g2(alloc),  "var(--xpusys-cyan)")
-      + tipRow("  Reserved Buffer (PyTorch pre-alloc)", g2(buf),    "var(--xpusys-purple)")
-      + tipRow("Free",              g2(free),   "var(--xpusys-ok)")
-      + tipNote("Source: zesMemoryGetState / torch.xpu.memory_allocated / memory_reserved");
+      + tipRow("Display & Driver Usage",         g2(sysEnv), "var(--xpusys-text-dim)", true)
+      + tipRow("Model Load & Compute Usage",     g2(alloc),  "var(--xpusys-cyan)",     true)
+      + tipRow("PyTorch Pre-allocated",          g2(buf),    "var(--xpusys-purple)",   true)
+      + tipRow("Free",              g2(free),   "var(--xpusys-ok)");
   }
   return tipTitle("🧠 显存详情")
     + tipRow("总量",       g2(total))
     + tipRow("当前占用",   g2(used),   c)
-    + tipRow("  系统与环境 (系统显示及驱动占用)",           g2(sysEnv), "var(--xpusys-text-dim)")
-    + tipRow("  模型与计算 (当前加载模型与实时运算)",       g2(alloc),  "var(--xpusys-cyan)")
-    + tipRow("  预留缓冲区 (PyTorch 预先霸占的待分配空间)", g2(buf),    "var(--xpusys-purple)")
-    + tipRow("空闲",       g2(free),   "var(--xpusys-ok)")
-    + tipNote("来源: zesMemoryGetState / torch.xpu.memory_allocated / memory_reserved");
+    + tipRow("显示与驱动占用",       g2(sysEnv), "var(--xpusys-text-dim)", true)
+    + tipRow("模型加载运算占用",     g2(alloc),  "var(--xpusys-cyan)",     true)
+    + tipRow("Pytorch预占用",        g2(buf),    "var(--xpusys-purple)",   true)
+    + tipRow("空闲",       g2(free),   "var(--xpusys-ok)");
 }
 
 function buildRSVTip(snap, eng) {
@@ -1134,15 +1149,13 @@ function buildRSVTip(snap, eng) {
   if (eng) {
     return tipTitle("💾 Reserved (PyTorch Cache)")
       + tipRow("Cache Pool",  (rsv   * 1024).toFixed(0) + " MB", "var(--xpusys-purple)")
-      + tipRow("  In Use",    (alloc * 1024).toFixed(0) + " MB", "var(--xpusys-cyan)")
-      + tipRow("  Free Buf",  (buf   * 1024).toFixed(0) + " MB", "var(--xpusys-text-dim)")
-      + tipNote("Source: torch.xpu.memory_reserved()");
+      + tipRow("In Use",    (alloc * 1024).toFixed(0) + " MB", "var(--xpusys-cyan)",     true)
+      + tipRow("Free Buf",  (buf   * 1024).toFixed(0) + " MB", "var(--xpusys-text-dim)", true);
   }
   return tipTitle("💾 PyTorch 缓存池")
     + tipRow("缓存总量",   (rsv   * 1024).toFixed(0) + " MB", "var(--xpusys-purple)")
-    + tipRow("  实际占用", (alloc * 1024).toFixed(0) + " MB", "var(--xpusys-cyan)")
-    + tipRow("  空闲缓存", (buf   * 1024).toFixed(0) + " MB", "var(--xpusys-text-dim)")
-    + tipNote("来源: torch.xpu.memory_reserved()");
+    + tipRow("实际占用", (alloc * 1024).toFixed(0) + " MB", "var(--xpusys-cyan)",     true)
+    + tipRow("空闲缓存", (buf   * 1024).toFixed(0) + " MB", "var(--xpusys-text-dim)", true);
 }
 
 function buildPWRTip(snap, eng) {
@@ -1170,13 +1183,13 @@ function buildPWRTip(snap, eng) {
       + tipRow("Instant Power", snap.power_w.toFixed(1) + " W", c);
     if (tgp > 0) html += tipRow("TGP Limit",  tgp.toFixed(0) + " W", "var(--xpusys-text-faint)")
                        + tipRow("Load Ratio", (pct * 100).toFixed(0) + " %", c);
-    return html + tipNote("Source: Intel Level Zero · zesPowerGetEnergyCounter\nAdmin · Dual-sample energy delta");
+    return html;
   }
   let html = tipTitle(`⚡ ${dev} 实时功率`)
     + tipRow("瞬时功率", snap.power_w.toFixed(1) + " W", c);
   if (tgp > 0) html += tipRow("TGP 上限",  tgp.toFixed(0) + " W", "var(--xpusys-text-faint)")
                      + tipRow("负载比例", (pct * 100).toFixed(0) + " %", c);
-  return html + tipNote("来源: Intel Level Zero · zesPowerGetEnergyCounter\n需要管理员权限 · 双采样能量差值");
+  return html;
 }
 
 function fmtTflops(v) {
@@ -1316,49 +1329,65 @@ function buildPredictorTip(snap, eng) {
   const total = _predModels.reduce((s, m) => s + (m.size || 0), 0);
   const mPeak = _predModels.length > 0 ? Math.max(..._predModels.map(m => m.size || 0)) : 0;
   const pred  = calcPrediction(total, mPeak, snap);
-  const divider = `<div style="border-top:1px solid rgba(255,255,255,0.1);margin:5px 0"></div>`;
 
   // ── 标题 ──
   let html = tipTitle(eng ? "🎯 Current Load List" : "🎯 当前加载清单");
 
-  // ── 成功率输入参数 ──
+  // ── 成功率输入参数（先结论后细节：成功率置顶 → 约束明细 → 计算参数沉底）──
   const vendorName = pred.gpuVendor === "nvidia" ? "NVIDIA UVM" : "Intel Arc";
   const overflowTol = pred.gamma.toFixed(1) + "x";
+  const divider = `<div style="border-top:1px solid var(--xpusys-tooltip-border);margin:4px 0"></div>`;
   if (eng) {
-    html += tipRow("Overflow Tolerance", overflowTol + " (" + vendorName + ")", "var(--xpusys-cyan)");
-    html += tipRow("Eff. VRAM Cap",      pred.vEff.toFixed(2)  + " GB", "var(--xpusys-cyan)");
-    html += tipRow("Peak Model",         mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "var(--xpusys-crit)" : "var(--xpusys-ok)");
-    html += tipRow("  VRAM Gap",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
-    html += tipRow("  P_peak",           (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
-    html += tipRow("Total Models",       total.toFixed(2)      + " GB", pred.color);
-    html += tipRow("  Load Gap",         pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
-    html += tipRow("  Avail. RAM",       pred.cRam.toFixed(2)  + " GB", "var(--xpusys-purple)");
-    html += tipRow("  Avail. Commit",    pred.sVirt.toFixed(2) + " GB", "var(--xpusys-text-dim)");
-    html += tipRow("  P_load",           (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
+    // ① 结论
     html += tipRow("Success Rate",       pred.rate + " %",               pred.color);
+    html += divider;
+    // ② 硬约束（单模型能否装入）
+    html += tipRow("Peak Model",         mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "var(--xpusys-crit)" : "var(--xpusys-ok)");
+    html += tipRow("VRAM Gap",           pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)", true);
+    html += tipRow("P_peak",             (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)", true);
+    // ③ 软约束（总量能否周转）
+    html += tipRow("Total Models",       total.toFixed(2)      + " GB", pred.color);
+    html += tipRow("Load Gap",           pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)", true);
+    html += tipRow("P_load",             (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)", true);
+    // ④ 可用资源
+    html += tipRow("Avail. RAM",         pred.cRam.toFixed(2)  + " GB", "var(--xpusys-purple)");
+    html += tipRow("Avail. Commit",      pred.sVirt.toFixed(2) + " GB", "var(--xpusys-text-dim)");
+    html += divider;
+    // ⑤ 计算参数（技术细节沉底）
+    html += tipRow("Eff. VRAM Cap",      pred.vEff.toFixed(2)  + " GB", "var(--xpusys-cyan)");
+    html += tipRow("Overflow Tolerance", overflowTol + " (" + vendorName + ")", "var(--xpusys-cyan)");
   } else {
-    html += tipRow("溢出容忍",           overflowTol + " (" + vendorName + ")", "var(--xpusys-cyan)");
-    html += tipRow("显存上限",           pred.vEff.toFixed(2)  + " GB", "var(--xpusys-cyan)");
-    html += tipRow("峰值模型",           mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "var(--xpusys-crit)" : "var(--xpusys-ok)");
-    html += tipRow("  显存缺口",         pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
-    html += tipRow("  显存压力",         (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
-    html += tipRow("模型总量",           total.toFixed(2)      + " GB", pred.color);
-    html += tipRow("  负载缺口",         pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)");
-    html += tipRow("  可用内存",         pred.cRam.toFixed(2)  + " GB", "var(--xpusys-purple)");
-    html += tipRow("  可用虚拟内存",     pred.sVirt.toFixed(2) + " GB", "var(--xpusys-text-dim)");
-    html += tipRow("  负载压力",         (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)");
+    // ① 结论
     html += tipRow("预测成功率",         pred.rate + " %",               pred.color);
+    html += divider;
+    // ② 硬约束（单模型能否装入）
+    html += tipRow("峰值模型",           mPeak.toFixed(2)      + " GB", pred.dPeak > 0 ? "var(--xpusys-crit)" : "var(--xpusys-ok)");
+    html += tipRow("显存缺口",           pred.dPeak.toFixed(2) + " GB", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)", true);
+    html += tipRow("显存压力",           (pred.pPeak * 100).toFixed(0) + " %", pred.dPeak > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)", true);
+    // ③ 软约束（总量能否周转）
+    html += tipRow("模型总量",           total.toFixed(2)      + " GB", pred.color);
+    html += tipRow("负载缺口",           pred.dLoad.toFixed(2) + " GB", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-na)", true);
+    html += tipRow("负载压力",           (pred.pLoad * 100).toFixed(0) + " %", pred.dLoad > 0 ? "var(--xpusys-warn)" : "var(--xpusys-ok)", true);
+    // ④ 可用资源
+    html += tipRow("可用内存",           pred.cRam.toFixed(2)  + " GB", "var(--xpusys-purple)");
+    html += tipRow("可用虚拟内存",       pred.sVirt.toFixed(2) + " GB", "var(--xpusys-text-dim)");
+    html += divider;
+    // ⑤ 计算参数（技术细节沉底）
+    html += tipRow("显存上限",           pred.vEff.toFixed(2)  + " GB", "var(--xpusys-cyan)");
+    html += tipRow("溢出容忍",           overflowTol + " (" + vendorName + ")", "var(--xpusys-cyan)");
   }
 
   // ── 分隔线 + 模型列表 ──
-  html += divider;
+  html += `<div style="border-top:1px solid var(--xpusys-tooltip-border);margin:5px 0"></div>`;
   const sorted = [..._predModels].sort((a, b) => b.size - a.size);
   if (sorted.length === 0) {
     html += `<div class="xpusys-tooltip-note">${eng ? "No active models detected." : "无活跃模型"}</div>`;
   } else {
     for (const m of sorted) {
       const short = m.name.split(/[\\/]/).pop();
-      html += tipRow(short, m.size.toFixed(2) + " GB", "var(--xpusys-ok)");
+      // 固定字数缩略：超过 24 字符截断并加省略号（配合 CSS ellipsis 双保险）
+      const display = short.length > 24 ? short.slice(0, 24) + "…" : short;
+      html += tipRow(display, m.size.toFixed(2) + " GB", "var(--xpusys-ok)");
     }
   }
 

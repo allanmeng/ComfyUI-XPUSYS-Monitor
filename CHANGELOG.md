@@ -6,7 +6,27 @@
 
 ## English
 
-### v1.0.6 — 2026-08-27
+### v1.0.7 — 2026-08-28
+
+#### ✨ New Features
+
+- **AMD dual-platform telemetry**: AMD GPUs are now fully supported on both Windows and Linux.
+  - **Windows (ADLX)**: New primary path via `ADLXPybind` (AMD official SDK) — GPU load, clock, temperature, VRAM, and power draw, no admin required. Declared as a conditional dependency: `ADLXPybind; platform_system == "Windows"`. The call pattern (GetSupportedGPUMetrics capability pre-checks + GetCurrentGPUMetrics) follows the proven implementation from ComfyUI-ADLX-Monitor; only the telemetry extraction is shared, the UI stays native.
+  - **Linux / ROCm (amdsmi)**: New primary path via `amdsmi` (official successor to the deprecated `rocm_smi_lib`) — device name, VRAM, load, temperature, power, and clock through `amdsmi_get_gpu_*`. Legacy `rocm_smi` remains as a compatibility fallback for old environments.
+  - **Detection chain**: `torch.cuda+ROCm → NVIDIA → ADLX (Windows) → amdsmi/hip/sysfs (Linux) → Intel → fallback`. The new Linux AMD probe (`_detect_amd_linux`, three independent signals: amdsmi enumeration, `torch.version.hip`, `/sys/class/drm` vendor 0x1002) sits before the Intel tier, so an AMD dGPU is no longer shadowed by an Intel iGPU (fixes issue #5: RX 9070 XT + Ultra 7 265K misdetected as iGPU).
+  - **Multi-GPU**: ADLX `GetGPUs()` and amdsmi processor-handle lists both back `select_device()`; thread-safe via `_hw_lock`.
+  - **PCI ID via ADLX**: `_read_pci_id()` now tries `IADLXGPU::DeviceId()` (manufacturer-programmed 4-digit hex device ID) with several binding-name candidates; when unavailable, the frontend `matchSpecByName` fallback still resolves the SPEC capsule.
+
+#### 🔧 Improvements
+
+- **Tooltip polish** (all capsules): floating panels narrowed (min-width 220→190px, capped at 320px) with `pre-wrap` so long source lines wrap; font sizes reduced (body 16→14px, title 17→15px, source 13→12px); sub-item indentation switched from leading spaces (broken by `white-space: nowrap`) to a dedicated `sub` parameter + CSS `padding-left`.
+- **Source visibility**: only the PRED and SPEC panels keep their "Source/来源" footnote; all other capsules hide it.
+- **Predictor capsule text**: reordered to `成功率:xx% | 状态 | 模型:xxG/xxG` (success rate first, matching the panel order); risk label font size aligned with the rest of the capsule.
+- **Predictor panel order**: conclusion first (success rate), then hard constraint (peak model), soft constraint (total models), available resources, and calculation parameters at the bottom — grouped with divider lines.
+- **CPU model name**: ` CPU @ 2.90GHz` suffix stripped from the model row (frequency already has its own row).
+- **VRAM panel labels**: shortened to 显示与驱动占用 / 模型加载运算占用 / Pytorch预占用 (Display & Driver Usage / Model Load & Compute Usage / PyTorch Pre-allocated); long model names truncate at 24 chars with `…`.
+
+---
 
 #### ✨ New Features
 
@@ -177,7 +197,27 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 
 ## 中文
 
-### v1.0.6 — 2026-08-27
+### v1.0.7 — 2026-08-28
+
+#### ✨ 新功能
+
+- **AMD 双平台遥测**：AMD 显卡在 Windows 和 Linux 上均获得完整支持。
+  - **Windows（ADLX）**：新增首选路径，通过 `ADLXPybind`（AMD 官方 SDK）获取负载、频率、温度、显存与功耗，无需管理员权限。声明为条件依赖：`ADLXPybind; platform_system == "Windows"`。调用模式（GetSupportedGPUMetrics 能力预检 + GetCurrentGPUMetrics 读值）参考自 ComfyUI-ADLX-Monitor 的成熟实现——仅共享遥测提取，界面保持本项目原生。
+  - **Linux / ROCm（amdsmi）**：新增首选路径，通过 `amdsmi`（官方继任者，替代已废弃的 `rocm_smi_lib`）获取设备名、显存、负载、温度、功耗与频率（`amdsmi_get_gpu_*`）。旧 `rocm_smi` 保留为老环境兼容兜底。
+  - **检测链**：`torch.cuda+ROCm → NVIDIA → ADLX(Windows) → amdsmi/hip/sysfs(Linux) → Intel → fallback`。新增 Linux AMD 探测（`_detect_amd_linux`，三层独立信号：amdsmi 枚举、`torch.version.hip`、`/sys/class/drm` vendor 0x1002），位于 Intel 层之前——AMD 独显不再被 Intel 核显遮蔽（修复 issue #5：RX 9070 XT + Ultra 7 265K 被误判为核显）。
+  - **多 GPU**：ADLX `GetGPUs()` 与 amdsmi 处理器句柄列表均支持 `select_device()` 运行时切换；`_hw_lock` 保证线程安全。
+  - **ADLX 读取 PCI ID**：`_read_pci_id()` 现在尝试 `IADLXGPU::DeviceId()`（出厂预置的 4 位十六进制设备 ID），兼容多种绑定方法名；读不到时前端 `matchSpecByName` 名称兜底仍能解析 SPEC 胶囊。
+
+#### 🔧 改进
+
+- **浮层样式打磨**（所有胶囊）：下拉面板收窄（min-width 220→190px，上限 320px），`pre-wrap` 允许来源长行折行；字号整体缩小（主体 16→14px、标题 17→15px、来源 13→12px）；子条目缩进从"前导空格"（被 `white-space: nowrap` 折叠失效）改为专用 `sub` 参数 + CSS `padding-left`。
+- **来源显示策略**：仅 PRED 与 SPEC 浮层保留「来源/数据来源」注脚，其余胶囊全部隐藏。
+- **预测胶囊文字**：重排为 `成功率:xx% | 状态 | 模型:xxG/xxG`（成功率置前，与浮层顺序呼应）；风险标签字号与胶囊其他文字对齐。
+- **预测浮层顺序**：结论置前（成功率）→ 硬约束（峰值模型）→ 软约束（模型总量）→ 可用资源 → 计算参数沉底，分隔线分组。
+- **CPU 型号**：型号行去掉 ` CPU @ 2.90GHz` 后缀（频率已有独立一行）。
+- **VRAM 浮层文案**：精简为 显示与驱动占用 / 模型加载运算占用 / Pytorch预占用（英文对应 Display & Driver Usage / Model Load & Compute Usage / PyTorch Pre-allocated）；长模型名超 24 字符截断加 `…`。
+
+---
 
 #### ✨ 新功能
 

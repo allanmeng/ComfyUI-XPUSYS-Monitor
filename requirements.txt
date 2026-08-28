@@ -5,9 +5,13 @@ psutil
 # Safe to install on Intel/AMD machines; unused if no NVIDIA driver is present
 pynvml
 
-# AMD GPU monitoring — required by AMDProvider only (ROCm)
+# AMD GPU monitoring — primary path on Windows via ADLX (AMD official SDK)
+# Enables full telemetry (load/clock/temp/VRAM/power) on Windows AMD machines
+ADLXPybind; platform_system == "Windows"
+
+# AMD GPU monitoring — secondary path on ROCm / Linux (official successor to rocm_smi)
 # Only needed when using AMD GPU with ROCm; safe to install on other systems
-# rocm_smi_lib
+# amdsmi
 
 # ---------------------------------------------------------------------------
 # The following are provided by ComfyUI itself — DO NOT add them here.
