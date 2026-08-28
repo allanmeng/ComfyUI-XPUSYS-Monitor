@@ -13,7 +13,7 @@ ADLXPybind; platform_system == "Windows"
 # NOT auto-installed: amdsmi requires a proper ROCm environment and can fail on
 # plain pip install. Install manually on ROCm machines if needed:
 #   pip install amdsmi
-#   project: https://github.com/ROCm/rocm-systems/tree/develop/projects/amdsmi
+#   install docs: https://rocm.docs.amd.com/projects/amdsmi/en/latest/install/install.html
 # amdsmi
 
 # ---------------------------------------------------------------------------
