@@ -6,6 +6,17 @@
 
 ## English
 
+### v1.0.8.1 — 2026-08-29
+
+#### 🐛 Bug Fixes
+
+- **CPU frequency frozen on Windows**: The CPU capsule showed a constant frequency (e.g. `@2.90GHz`) that never changed during workflows.
+  - Root cause: `psutil.cpu_freq().current` always returns the maximum frequency on Windows (known psutil limitation — the standard Windows API does not expose the current CPU clock).
+  - Fix: on Windows the plugin now reads the real-time frequency via the PDH counter `\Processor Information(_Total)\% Processor Performance` (the same one Task Manager uses) — dual-sample delta multiplied by the base clock read from the registry (`HKLM\...\CentralProcessor\0\~MHz`, cached). Idle frequency now drops to the power-saving state and boosts during load, matching Task Manager.
+  - Falls back to psutil on non-Windows or if PDH is unavailable.
+
+---
+
 ### v1.0.8 — 2026-08-28
 
 #### ✨ New Features
@@ -225,6 +236,17 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.8.1 — 2026-08-29
+
+#### 🐛 Bug 修复
+
+- **Windows 上 CPU 频率固定不变**：CPU 胶囊显示恒定频率（如 `@2.90GHz`），运行工作流时毫无变化。
+  - 根因：`psutil.cpu_freq().current` 在 Windows 上永远返回最大频率（psutil 已知限制——Windows 标准 API 不暴露实时 CPU 频率）。
+  - 修复：Windows 下改用 PDH 计数器 `\Processor Information(_Total)\% Processor Performance`（任务管理器同款）读取实时频率——双采样差值 × 注册表基准频率（`HKLM\...\CentralProcessor\0\~MHz`，缓存）。空闲时降至节能频率、负载时随 boost 上浮，与任务管理器一致。
+  - 非 Windows 或 PDH 不可用时自动回退 psutil。
+
+---
 
 ### v1.0.8 — 2026-08-28
 

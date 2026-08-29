@@ -805,6 +805,79 @@ def _read_commit_charge() -> Tuple[float, float]:
         return 0.0, 0.0
 
 
+# ── Windows 实时 CPU 频率（PDH）──────────────────────────────────────────
+# psutil.cpu_freq().current 在 Windows 上恒等于最大频率（psutil 已知限制：
+# "On Windows, current is always reported as the maximum frequency"），导致
+# CPU 胶囊频率在工作流运行期间完全不变。
+# 这里改用任务管理器同款计数器：
+#   \Processor Information(_Total)\% Processor Performance
+#   （相对基准频率的百分比，支持 boost > 100%） × 注册表基准频率 ~MHz
+# 复用轮询节奏做双采样（PdhCollectQueryData 需要间隔才产生有效值）。
+
+class _PDH_FMT_COUNTERVALUE(ctypes.Structure):
+    _fields_ = [("CStatus", ctypes.c_ulong),
+                ("doubleValue", ctypes.c_double)]
+
+_pdh         = None
+_pdh_query   = None
+_pdh_counter = None
+_pdh_ready   = False
+_cpu_base_mhz = 0
+
+
+def _get_cpu_base_mhz() -> int:
+    """CPU 基准频率（MHz），注册表一次读取并缓存。失败返回 0."""
+    global _cpu_base_mhz
+    if _cpu_base_mhz:
+        return _cpu_base_mhz
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+        ) as key:
+            _cpu_base_mhz = int(winreg.QueryValueEx(key, "~MHz")[0])
+    except Exception:
+        _cpu_base_mhz = 0
+    return _cpu_base_mhz
+
+
+def _read_pdh_cpu_freq_mhz() -> float:
+    """Windows 实时 CPU 频率（MHz）。非 Windows / 初始化失败返回 0（调用方回退 psutil）。"""
+    global _pdh, _pdh_query, _pdh_counter, _pdh_ready
+    if os.name != "nt":
+        return 0.0
+    base = _get_cpu_base_mhz()
+    if base <= 0:
+        return 0.0
+    try:
+        if _pdh is None:
+            _pdh = ctypes.WinDLL("pdh.dll")
+            _pdh_query = ctypes.c_void_p()
+            if _pdh.PdhOpenQueryW(None, 0, ctypes.byref(_pdh_query)) != 0:
+                _pdh = None
+                return 0.0
+            _pdh_counter = ctypes.c_void_p()
+            path = ctypes.c_wchar_p(r"\Processor Information(_Total)\% Processor Performance")
+            if _pdh.PdhAddEnglishCounterW(_pdh_query, path, 0, ctypes.byref(_pdh_counter)) != 0:
+                _pdh = None
+                return 0.0
+            _pdh_ready = False
+        # 每次轮询 collect 一次；计数器需两次采样间隔才产生有效值（复用 1s 轮询）
+        _pdh.PdhCollectQueryData(_pdh_query)
+        if not _pdh_ready:
+            _pdh_ready = True
+            return 0.0
+        val = _PDH_FMT_COUNTERVALUE()
+        ret = _pdh.PdhGetFormattedCounterValue(
+            _pdh_counter, 0x00000200, None, ctypes.byref(val))
+        if ret != 0 or val.CStatus != 0 or val.doubleValue <= 0:
+            return 0.0
+        return base * val.doubleValue / 100.0
+    except Exception:
+        return 0.0
+
+
 def _read_cpu_ram_stats(psutil_ok: bool) -> dict:
     """Return CPU and RAM metrics via psutil + GlobalMemoryStatusEx."""
     if not psutil_ok:
@@ -812,13 +885,19 @@ def _read_cpu_ram_stats(psutil_ok: bool) -> dict:
     try:
         import psutil
         cpu_pct  = psutil.cpu_percent(interval=None)
-        cpu_freq = psutil.cpu_freq()
         ram      = psutil.virtual_memory()
         gb       = 1024 ** 3
         commit_used, commit_limit = _read_commit_charge()
+        # CPU 频率：Windows 优先 PDH 实时频率（psutil 在 Windows 恒返回最大频率）
+        pdh_mhz = _read_pdh_cpu_freq_mhz()
+        if pdh_mhz > 0:
+            cpu_freq_ghz = round(pdh_mhz / 1000.0, 2)
+        else:
+            f = psutil.cpu_freq()
+            cpu_freq_ghz = round(f.current / 1000.0, 2) if f else 0.0
         return {
             "cpu_pct":          cpu_pct,
-            "cpu_freq_ghz":     round(cpu_freq.current / 1000.0, 2) if cpu_freq else 0.0,
+            "cpu_freq_ghz":     cpu_freq_ghz,
             "ram_pct":          ram.percent,
             "ram_total_gb":     ram.total     / gb,
             "ram_used_gb":      ram.used      / gb,
