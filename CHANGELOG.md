@@ -6,6 +6,17 @@
 
 ## English
 
+### v1.0.8.2 — 2026-09-01
+
+#### 🐛 Bug Fixes
+
+- **Virtual memory (Commit) capsule empty on Linux**: The `虚拟内存 / Commit` capsule always read 0 on Ubuntu and other POSIX machines.
+  - Root cause: `_read_commit_charge()` used the Windows-only `GlobalMemoryStatusEx` API (`ctypes.windll` does not exist on Linux), which raised and fell back to `(0.0, 0.0)`. The function is shared by all three providers (Intel / NVIDIA / AMD), so any GPU on Linux was affected.
+  - Fix: on non-Windows the function now reads `psutil.swap_memory()` — the closest POSIX equivalent to "virtual memory" (the Swap column of `free`). Windows behavior is unchanged.
+  - Note: a machine with no swap configured still reads `0 / 0` — that is the truth (no swap space), not a read failure.
+
+---
+
 ### v1.0.8.1 — 2026-08-29
 
 #### 🐛 Bug Fixes
@@ -236,6 +247,17 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.8.2 — 2026-09-01
+
+#### 🐛 Bug 修复
+
+- **Linux 下虚拟内存（Commit）胶囊读不到数值**：Ubuntu 等 POSIX 系统上「虚拟内存」胶囊恒为 0。
+  - 根因：`_read_commit_charge()` 使用了 Windows 专属 API `GlobalMemoryStatusEx`（Linux 上没有 `ctypes.windll`），异常被吞掉后回退 `(0.0, 0.0)`。该函数被三家 provider（Intel / NVIDIA / AMD）共用，Linux 上任何显卡都会中招。
+  - 修复：非 Windows 平台改用 `psutil.swap_memory()` 读取——即 POSIX 语境下的「虚拟内存」（`free` 命令的 Swap 列）。Windows 行为不变。
+  - 注意：未配置 swap 的机器仍会显示 `0 / 0`——这是真实情况（没有交换空间），并非读取失败。
+
+---
 
 ### v1.0.8.1 — 2026-08-29
 

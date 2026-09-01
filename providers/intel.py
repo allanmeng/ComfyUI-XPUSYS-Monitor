@@ -775,32 +775,46 @@ class _LevelZeroSysman:
 
 def _read_commit_charge() -> Tuple[float, float]:
     """
-    Return (commit_used_gb, commit_limit_gb) via GlobalMemoryStatusEx.
+    Return (commit_used_gb, commit_limit_gb).
 
-    Maps to Task Manager → Performance → Memory → "已提交 (Committed)":
+    Windows: GlobalMemoryStatusEx — maps to Task Manager → Performance →
+    Memory → "已提交 (Committed)":
       CommitLimit = ullTotalPageFile          (RAM + page file ceiling)
       CommitTotal = ullTotalPageFile - ullAvailPageFile
+
+    Linux/macOS: psutil.swap_memory() — the closest POSIX equivalent to
+    "virtual memory" (the Swap column of `free`). A machine with no swap
+    configured reads 0 / 0 — that is the truth (no swap space), not a
+    read failure.
     """
+    gb = 1024 ** 3
+    if os.name == "nt":
+        try:
+            class _MEMSTATEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength",            ctypes.c_ulong),
+                    ("dwMemoryLoad",        ctypes.c_ulong),
+                    ("ullTotalPhys",        ctypes.c_ulonglong),
+                    ("ullAvailPhys",        ctypes.c_ulonglong),
+                    ("ullTotalPageFile",    ctypes.c_ulonglong),
+                    ("ullAvailPageFile",    ctypes.c_ulonglong),
+                    ("ullTotalVirtual",     ctypes.c_ulonglong),
+                    ("ullAvailVirtual",     ctypes.c_ulonglong),
+                    ("ullAvailExtVirtual",  ctypes.c_ulonglong),
+                ]
+            stat = _MEMSTATEX()
+            stat.dwLength = ctypes.sizeof(_MEMSTATEX)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            limit = stat.ullTotalPageFile / gb
+            used  = (stat.ullTotalPageFile - stat.ullAvailPageFile) / gb
+            return round(used, 2), round(limit, 2)
+        except Exception:
+            return 0.0, 0.0
+    # POSIX: swap as "virtual memory"
     try:
-        class _MEMSTATEX(ctypes.Structure):
-            _fields_ = [
-                ("dwLength",            ctypes.c_ulong),
-                ("dwMemoryLoad",        ctypes.c_ulong),
-                ("ullTotalPhys",        ctypes.c_ulonglong),
-                ("ullAvailPhys",        ctypes.c_ulonglong),
-                ("ullTotalPageFile",    ctypes.c_ulonglong),
-                ("ullAvailPageFile",    ctypes.c_ulonglong),
-                ("ullTotalVirtual",     ctypes.c_ulonglong),
-                ("ullAvailVirtual",     ctypes.c_ulonglong),
-                ("ullAvailExtVirtual",  ctypes.c_ulonglong),
-            ]
-        stat = _MEMSTATEX()
-        stat.dwLength = ctypes.sizeof(_MEMSTATEX)
-        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
-        gb = 1024 ** 3
-        limit = stat.ullTotalPageFile / gb
-        used  = (stat.ullTotalPageFile - stat.ullAvailPageFile) / gb
-        return round(used, 2), round(limit, 2)
+        import psutil
+        sw = psutil.swap_memory()
+        return round(sw.used / gb, 2), round(sw.total / gb, 2)
     except Exception:
         return 0.0, 0.0
 
@@ -879,7 +893,7 @@ def _read_pdh_cpu_freq_mhz() -> float:
 
 
 def _read_cpu_ram_stats(psutil_ok: bool) -> dict:
-    """Return CPU and RAM metrics via psutil + GlobalMemoryStatusEx."""
+    """Return CPU and RAM metrics via psutil + platform commit stats."""
     if not psutil_ok:
         return {}
     try:
