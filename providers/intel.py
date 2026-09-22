@@ -1064,18 +1064,32 @@ class IntelProvider(BaseGPUProvider):
     # ------------------------------------------------------------------
 
     def _check_torch(self):
+        """
+        Verify the one PyTorch API this provider depends on: the XPU allocator
+        statistics consumed by `_read_torch_stats()`.
+
+        Deliberately does NOT call torch.xpu.is_available().  In torch 2.14
+        that helper is literally `device_count() > 0`, and `device_count()`
+        routes through Level Zero Sysman via the optional third-party `pyzes`
+        package whenever XPU has not been initialised yet
+        (torch/xpu/__init__.py: 290 → 277 → 164).  A broken pyzes therefore
+        makes it raise `AttributeError: function 'zesInit' not found` — which
+        used to switch torch statistics off (`_torch_ok = False`, so
+        allocated/reserved read 0) even though the allocator query itself works
+        perfectly.  Probing the capability we actually use is both stricter and
+        immune to that failure.  Reproduced on Windows with torch 2.14.0+xpu and
+        pyzes 0.1.2.
+        """
         try:
             import torch
-            if torch.xpu.is_available():
-                self._torch_ok = True
-                logger.info(
-                    f"XPUSYSMonitor: torch.xpu OK, "
-                    f"device count={torch.xpu.device_count()}"
-                )
-            else:
-                logger.warning("XPUSYSMonitor: torch.xpu not available.")
-        except Exception as exc:
-            logger.warning(f"XPUSYSMonitor: torch import error — {exc}")
+            torch.xpu.memory_allocated(0)
+            torch.xpu.memory_reserved(0)
+            self._torch_ok = True
+            logger.info("XPUSYSMonitor: torch.xpu allocator OK.")
+        except BaseException as exc:
+            logger.warning(
+                f"XPUSYSMonitor: torch.xpu allocator unavailable — {exc}"
+            )
 
     def _check_psutil(self):
         try:

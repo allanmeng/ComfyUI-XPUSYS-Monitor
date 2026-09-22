@@ -15,7 +15,7 @@ Detection strategy — align with ComfyUI's own device selection:
 Detection order:
   1. torch.cuda.is_available() + torch.version.roc → AMDProvider   (ROCm)
   2. torch.cuda.is_available()                    → NvidiaProvider (NVIDIA)
-  3. ADLXPybind present + AMD GPU (Windows)       → AMDProvider   (ADLX)
+  3. AMD driver present + ADLX GPU list (Windows) → AMDProvider   (ADLX)
   4. amdsmi / hip / sysfs vendor (Linux)          → AMDProvider   (amdsmi)
   5. torch.xpu.is_available()                    → IntelProvider  (Intel Arc)
   6. ze_loader.dll present                        → IntelProvider  (fallback)
@@ -30,6 +30,10 @@ ADLX, Linux AMD machines use amdsmi (or hip / sysfs vendor probing).  Tier 3
 sits after the torch.cuda tiers so mixed AMD+NVIDIA machines keep following
 ComfyUI's primary device (NVIDIA).  Tier 4 sits before the Intel tier so an
 AMD dGPU on Linux is never shadowed by an Intel iGPU (issue #5).
+
+Tier 3 is gated by _amd_gpu_present(): ADLX must not be initialised on a
+machine without an AMD GPU driver, because it can die with an uncatchable
+native access violation and take the whole ComfyUI process down.
 """
 
 import logging
@@ -129,15 +133,110 @@ def _detect_intel_torch() -> bool:
         return False
 
 
+# AMD display-driver user-mode DLLs.  A machine with an AMD GPU driver
+# installed has at least one of these in System32; Intel/NVIDIA-only machines
+# have none.  Used by _amd_gpu_present() as a passive pre-check.
+_AMD_DRIVER_DLLS = (
+    "atio6axx.dll",   # OpenGL ICD
+    "atidxx64.dll",   # D3D 10/11
+    "amdxx64.dll",    # D3D 12
+    "amdxc64.dll",    # D3D 12 (DXIL)
+    "amdvlk64.dll",   # Vulkan
+    "amfrt64.dll",    # AMF
+    "atiumd6a.dll",   # legacy UVD
+)
+
+# HKLM display-adapter class key — one numeric subkey per installed adapter.
+_DISPLAY_CLASS_KEY = (
+    r"SYSTEM\CurrentControlSet\Control\Class"
+    r"\{4d36e968-e325-11ce-bfc1-08002be10318}"
+)
+
+
+def _amd_gpu_present() -> bool:
+    """
+    Passive, crash-free check for AMD hardware / AMD display driver (Windows).
+
+    Why this exists
+    ---------------
+    `ADLXHelper.Initialize()` loads AMD's ADLX runtime.  On a machine with
+    neither an AMD GPU nor an AMD display driver the call does not always
+    return an error code — it has been observed to die with a **native access
+    violation**.  A native crash is not a Python exception, so no `try/except`
+    can contain it: the whole ComfyUI process is killed while custom nodes are
+    being imported.  Confirmed in the wild (Intel-only machine, faulthandler
+    stack pointing at `if _detect_adlx():`).
+
+    Therefore ADLX is only ever touched after this pre-check has confirmed that
+    AMD hardware or its driver is actually present.  Both signals are read-only
+    and load no vendor DLL, so they cannot crash:
+
+      1. Registry — display-adapter class key; DriverDesc contains "radeon" or
+         "amd".  Intel/NVIDIA driver descriptions never contain either word.
+      2. Filesystem — AMD user-mode driver DLLs present in System32, which
+         covers minimal or unconventional driver installs.
+
+    Returns False whenever the check cannot be performed, so the caller simply
+    skips the AMD probe and falls through to the Intel/NVIDIA tiers.
+    """
+    if os.name != "nt":
+        return False
+
+    # 1. Registry — most authoritative: the adapter's own driver description
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _DISPLAY_CLASS_KEY) as key:
+            index = 0
+            while True:
+                try:
+                    subkey = winreg.EnumKey(key, index)
+                except OSError:
+                    break
+                index += 1
+                if not subkey.isdigit():
+                    continue   # "Properties", "Configuration", ...
+                try:
+                    with winreg.OpenKey(key, subkey) as adapter:
+                        desc = str(
+                            winreg.QueryValueEx(adapter, "DriverDesc")[0]
+                        ).lower()
+                except OSError:
+                    continue
+                if "radeon" in desc or "amd" in desc:
+                    return True
+    except Exception:
+        pass
+
+    # 2. Filesystem — AMD driver DLLs, without loading any of them
+    try:
+        system32 = os.path.join(
+            os.environ.get("SystemRoot", r"C:\Windows"), "System32"
+        )
+        for dll in _AMD_DRIVER_DLLS:
+            if os.path.isfile(os.path.join(system32, dll)):
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
 def _detect_adlx() -> bool:
     """
     Return True if ADLX is usable and at least one AMD GPU is present.
 
     Windows-only: ADLXPybind is the AMD official SDK binding and does not
-    exist on Linux.  Initialize() fails on non-AMD machines, so a True result
-    is a strong AMD signal even when torch.cuda is unavailable.
+    exist on Linux.
+
+    ADLX is never probed before _amd_gpu_present() confirms AMD hardware or
+    driver: calling into it on a machine without an AMD GPU can terminate the
+    process with a native access violation (see _amd_gpu_present).  On real AMD
+    machines Initialize() succeeds and a non-empty GPU list is a trustworthy
+    AMD signal even when torch.cuda is unavailable.
     """
     if os.name != "nt":
+        return False
+    if not _amd_gpu_present():
         return False
     try:
         import ADLXPybind as ADLX
@@ -147,7 +246,11 @@ def _detect_adlx() -> bool:
         system = helper.GetSystemServices()
         gpus = system.GetGPUs() if system is not None else []
         return bool(gpus)
-    except Exception:
+    except BaseException:
+        # BaseException, not Exception: an error raised from inside the native
+        # binding (including SystemExit) must not abort plugin loading.
+        # A native access violation is still uncatchable — that is precisely
+        # what the _amd_gpu_present() gate above is for.
         return False
 
 

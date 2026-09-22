@@ -2,7 +2,7 @@
 name = "ComfyUI-XPUSYS-Monitor"
 # Strict three-segment semver (X.Y.Z) as required by the ComfyUI Registry.
 # v1.0.9 == code previously tagged v1.0.8.2 (four-segment format retired).
-version = "1.0.11"
+version = "1.0.12"
 description = "Intel Arc-first ComfyUI monitor for real-time GPU/CPU/RAM telemetry: utilization, temperature, VRAM, clock and power, plus an exclusive workflow success-rate predictor. NVIDIA (CUDA) and AMD (ROCm) fully supported."
 license = { text = "MIT" }
 dependencies = [

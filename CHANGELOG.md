@@ -6,6 +6,20 @@
 
 ## English
 
+### v1.0.12 — 2026-09-23
+
+#### 🐛 Bug Fixes
+
+- **Fatal crash at startup on machines without an AMD GPU (access violation)**: the AMD detection tier (`_detect_adlx()`) initialised AMD's ADLX SDK unconditionally on every Windows machine. On a machine with no AMD GPU and no AMD display driver this call does not return an error code — it dies with a **native access violation**, which is not a Python exception, so the surrounding `try/except` cannot contain it. ComfyUI was killed while importing custom nodes (faulthandler stack pointing at `if _detect_adlx():` in `providers/__init__.py`), with `Press any key to continue . . .` and no UI ever starting. Reported by a user running an Intel-only build.
+  - Fix: ADLX is now only probed after `_amd_gpu_present()` — a passive, crash-free pre-check — has confirmed AMD hardware or its driver is present. It reads the registry display-adapter class key (`DriverDesc` containing `radeon` / `amd`) and looks for AMD user-mode driver DLLs in `System32`; neither signal loads a vendor DLL, so neither can crash.
+  - Defensive hardening: the ADLX probe now catches `BaseException` instead of `Exception`, so errors raised from inside the native binding (including `SystemExit`) can no longer abort plugin loading. A native access violation remains uncatchable by design — that is exactly what the pre-check above is for.
+  - Verified on hardware (Intel Arc B580, no AMD driver): `_amd_gpu_present()` → `False`, `_detect_adlx()` → `False` **with `ADLXPybind` never imported** — the crashing code path is unreachable. With the gate forced open, the AMD branch still runs and still fails gracefully, so AMD detection is unchanged.
+  - AMD users are unaffected: on a machine with an AMD GPU driver both pre-check signals hit immediately and the existing ADLX path is used as before.
+- **PyTorch VRAM statistics silently read 0 when a broken `pyzes` is installed**: `_check_torch()` gated `_torch_ok` on `torch.xpu.is_available()`. In torch 2.14 that helper is literally `device_count() > 0`, and `device_count()` routes through Level Zero Sysman via the optional third-party `pyzes` package whenever XPU has not been initialised yet, so an importable-but-broken pyzes makes it raise `AttributeError: function 'zesInit' not found`. The outcome was `_torch_ok = False`: `memory_allocated` / `memory_reserved` were never queried, the VRAM tooltip's PyTorch rows stayed at 0, and the log carried a misleading `torch import error` warning.
+  - Fix: the probe now exercises the API the provider actually uses (`torch.xpu.memory_allocated` / `torch.xpu.memory_reserved`), which does not touch pyzes, and catches `BaseException`. Torch statistics stay alive and startup no longer reports a phantom torch failure. Reproduced on Windows with torch 2.14.0+xpu and pyzes 0.1.2.
+
+---
+
 ### v1.0.11 — 2026-09-17
 
 #### 🐛 Bug Fixes
@@ -277,6 +291,20 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.12 — 2026-09-23
+
+#### 🐛 问题修复
+
+- **无 AMD 显卡的机器启动时进程崩溃（access violation，致命）**：AMD 探测环节（`_detect_adlx()`）在所有 Windows 机器上无条件初始化 AMD 的 ADLX SDK。当机器既无 AMD 显卡、也未安装 AMD 显示驱动时，该调用**并不会返回错误码，而是以原生 access violation（内存访问违例）直接终结进程**——这不是 Python 异常，外层的 `try/except` 完全拦不住。结果是 ComfyUI 在加载自定义节点时被杀死（faulthandler 栈指向 `providers/__init__.py` 的 `if _detect_adlx():`），界面永远起不来。由一位使用纯 Intel 环境的用户实际报告。
+  - 修复：ADLX 现在只有在 `_amd_gpu_present()` 这道**纯被动、不可能崩溃**的前置检查确认「本机存在 AMD 硬件或 AMD 驱动」之后才会被调用。该检查读注册表显示适配器类键（`DriverDesc` 含 `radeon` / `amd`）以及 `System32` 下是否存在 AMD 用户态驱动 DLL；两个信号都不加载任何厂商 DLL，因此不会崩。
+  - 防御性加固：ADLX 探测的 `except Exception` 改为 `except BaseException`，原生绑定内部抛出的错误（包括 `SystemExit`）不再能中断插件加载。原生 access violation 依然无法被捕获——前置检查正是为此而设。
+  - 实机验证（Intel Arc B580，无 AMD 驱动）：`_amd_gpu_present()` → `False`，`_detect_adlx()` → `False`，且 **`ADLXPybind` 从未被导入** —— 崩溃路径已不可达。强制放行闸门后，AMD 分支仍正常执行并优雅失败，说明 AMD 探测逻辑未被改动。
+  - AMD 用户不受影响：装有 AMD 显卡驱动的机器上，两个前置信号立刻命中，后续仍走原有 ADLX 路径。
+- **装了坏掉的 `pyzes` 时 PyTorch 显存统计静默读 0**：`_check_torch()` 用 `torch.xpu.is_available()` 决定 `_torch_ok`。而 torch 2.14 里该函数就是 `device_count() > 0`，且 `device_count()` 在 XPU 尚未初始化时**先走 Level Zero Sysman（经由可选的第三方包 `pyzes`）**；一旦 pyzes 能导入但它是坏的，就会抛 `AttributeError: function 'zesInit' not found`。后果是 `_torch_ok = False`：`memory_allocated` / `memory_reserved` 再也不被查询，VRAM tooltip 里 PyTorch 那两行恒为 0，日志里还会多出一条误导性的 `torch import error` 警告。
+  - 修复：探测改为直接调用本 provider 真正依赖的 API（`torch.xpu.memory_allocated` / `torch.xpu.memory_reserved`），这些不经过 pyzes，且捕获 `BaseException`。PyTorch 显存统计恢复正常，启动日志也不再报莫须有的 torch 失败。已在 Windows + torch 2.14.0+xpu + pyzes 0.1.2 环境复现并验证。
+
+---
 
 ### v1.0.11 — 2026-09-17
 
