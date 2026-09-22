@@ -5,9 +5,22 @@ psutil
 # Safe to install on Intel/AMD machines; unused if no NVIDIA driver is present
 pynvml
 
-# AMD GPU monitoring — primary path on Windows via ADLX (AMD official SDK)
-# Enables full telemetry (load/clock/temp/VRAM/power) on Windows AMD machines
-ADLXPybind; platform_system == "Windows"
+# AMD GPU monitoring — primary path on Windows via ADLX (AMD official SDK).
+# Enables full telemetry (load/clock/temp/VRAM/power) on Windows AMD machines.
+#
+# NOT auto-installed, deliberately.  ADLXPybind ships a native extension that
+# delay-loads AMD's amdadlx64.dll; on a machine where that DLL exists but the
+# AMD runtime is not actually usable, loading it can kill the whole process with
+# a *native* access violation — which no Python try/except can contain, so
+# ComfyUI dies while custom nodes are imported (v1.0.12 crash report).
+# Installing it for every Windows user — including pure Intel / NVIDIA machines
+# that gain nothing from it — is therefore not acceptable.
+#
+# Windows AMD users opt in for full telemetry:
+#   pip install ADLXPybind
+#   docs: https://gpuopen.com/adlx/
+# Without it the monitor still reports CPU / RAM and logs an explicit hint.
+# ADLXPybind; platform_system == "Windows"
 
 # AMD GPU monitoring — secondary path on ROCm / Linux (official successor to rocm_smi)
 # NOT auto-installed: amdsmi requires a proper ROCm environment and can fail on

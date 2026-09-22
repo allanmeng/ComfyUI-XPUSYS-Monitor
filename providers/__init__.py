@@ -31,9 +31,19 @@ sits after the torch.cuda tiers so mixed AMD+NVIDIA machines keep following
 ComfyUI's primary device (NVIDIA).  Tier 4 sits before the Intel tier so an
 AMD dGPU on Linux is never shadowed by an Intel iGPU (issue #5).
 
-Tier 3 is gated by _amd_gpu_present(): ADLX must not be initialised on a
-machine without an AMD GPU driver, because it can die with an uncatchable
-native access violation and take the whole ComfyUI process down.
+Tier 3 needs the *optional* ADLXPybind wheel; Windows AMD users install it
+manually (see requirements.txt — it is deliberately not auto-installed, because
+shipping a native AMD extension to every Windows machine is exactly what broke
+startup before).  Two guards protect everyone else:
+
+  * ADLX is only ever touched after _amd_gpu_present() — a passive, crash-free
+    pre-check for AMD hardware or driver — has confirmed it is worth probing.
+    Handing control to the AMD runtime on a machine that has a stray
+    amdadlx64.dll but no usable AMD runtime can end the process with a native
+    access violation, which no `try/except` can contain.
+  * When AMD hardware is present but ADLX is unusable, tier 3 logs an explicit
+    and actionable hint (wheel missing vs. wheel present but init failed)
+    instead of silently degrading into a bare "no supported GPU detected".
 """
 
 import logging
@@ -67,10 +77,32 @@ def auto_detect_provider(interval_ms: int = 1000) -> BaseGPUProvider:
             return NvidiaProvider(interval_ms=interval_ms)
 
     # Windows AMD-only machines (non-ROCm torch): ADLX is the full telemetry path
-    if _detect_adlx():
+    adlx_available = _detect_adlx()
+    if adlx_available:
         logger.info("XPUSYSMonitor: ADLX available (Windows AMD) — using AMDProvider.")
         from .amd import AMDProvider
         return AMDProvider(interval_ms=interval_ms)
+
+    # AMD hardware or driver is present, yet ADLX is unusable.  Windows AMD has no
+    # other telemetry path, and letting this fall through silently would surface
+    # only a bare "no supported GPU detected" from the tiers below — which tells
+    # the user nothing.  State the real cause and the fix instead.
+    # Provider selection is deliberately left untouched: _amd_gpu_present() is a
+    # loose gate (it also accepts stray AMD driver DLLs), so it must never decide
+    # which provider a machine gets.
+    if _amd_gpu_present():
+        if _adlx_installed():
+            logger.warning(
+                "XPUSYSMonitor: AMD GPU detected but ADLX failed to initialise — "
+                "AMD GPU telemetry is unavailable (check the AMD driver install)."
+            )
+        else:
+            logger.warning(
+                "XPUSYSMonitor: AMD GPU or AMD display driver detected, but the "
+                "optional ADLXPybind package is not installed — Windows AMD "
+                "telemetry is unavailable.  For full monitoring run:  "
+                "pip install ADLXPybind"
+            )
 
     # Linux AMD machines (non-ROCm torch / container): amdsmi or sysfs probing.
     # Must run BEFORE the Intel tier so an AMD dGPU is never shadowed by an
@@ -219,6 +251,27 @@ def _amd_gpu_present() -> bool:
         pass
 
     return False
+
+
+def _adlx_installed() -> bool:
+    """
+    Return True if the optional ADLXPybind wheel is importable (Windows only).
+
+    Import-only by design: it loads the native extension module but never hands
+    control to the AMD driver, so unlike `ADLXHelper.Initialize()` it cannot die
+    with the process-killing access violation (measured on an Intel-only
+    machine: the import succeeds, then `Initialize()` returns ADLX_FAIL).
+
+    This is a *dependency* check, not a hardware check — pair it with
+    `_amd_gpu_present()` whenever the answer decides what to log or do.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import ADLXPybind  # noqa: F401
+        return True
+    except BaseException:
+        return False
 
 
 def _detect_adlx() -> bool:

@@ -6,6 +6,20 @@
 
 ## English
 
+### v1.0.13 — 2026-09-23
+
+#### 🐛 Bug Fixes
+
+- **`ADLXPybind` is no longer installed on every Windows machine**: the AMD telemetry dependency was declared unconditionally in `requirements.txt` / `pyproject.toml`, so ComfyUI-Manager installed a **native** AMD extension on every Windows machine — including pure Intel and NVIDIA builds that never use it. That extension delay-loads AMD's `amdadlx64.dll`, and on a machine where the DLL is present but the AMD runtime is not actually usable, loading it can kill the process with an access violation that no `try/except` can contain (the crash fixed in v1.0.12). Measured on an Intel Arc B580: `amdadlx64.dll` is absent system-wide, the import still succeeds, and `Initialize()` returns `ADLX_FAIL` — the v1.0.12 gate does work, but it remains a heuristic.
+  - Fix: the dependency is now **opt-in**. `pip install ADLXPybind` restores full Windows AMD telemetry; the detection code is unchanged and picks it up automatically.
+  - Removed from `requirements.txt` (kept there as a documented manual step) and from `pyproject.toml` `dependencies`.
+  - Why not subprocess isolation instead: `AMDProvider` needs to hold an ADLX handle for the **whole session** in order to keep sampling, so only the one-shot probe could be isolated — the steady-state calls would stay unprotected. Not shipping the dependency is deterministic where a gate or a subprocess is only ever probabilistic.
+  - New: when an AMD GPU or AMD display driver is detected but ADLX is unusable, the plugin now logs an explicit, actionable hint instead of letting the machine fall through to a bare `no supported GPU detected`. Two cases are distinguished — wheel missing (`pip install ADLXPybind`) vs. wheel present but `ADLX failed to initialise` (check the driver install).
+  - Provider selection is intentionally left unchanged: `_amd_gpu_present()` is a deliberately loose gate and is never allowed to decide which provider a machine gets.
+  - Verified: an Intel-only machine still selects `IntelProvider`; the new warning fires only when the AMD gate is forced open and the wheel is hidden; with the wheel visible the AMD path behaves exactly as before.
+
+---
+
 ### v1.0.12 — 2026-09-23
 
 #### 🐛 Bug Fixes
@@ -291,6 +305,20 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.13 — 2026-09-23
+
+#### 🐛 问题修复
+
+- **不再给所有 Windows 机器安装 `ADLXPybind`**：该 AMD 遥测依赖此前被无条件写在 `requirements.txt` / `pyproject.toml` 里，于是 ComfyUI-Manager 会把一个**原生扩展**装到每一台 Windows 机器上——包括根本用不到它的纯 Intel / NVIDIA 环境。该扩展会延迟加载 AMD 的 `amdadlx64.dll`；当机器上存在这个 DLL、但 AMD 运行时实际不可用时，加载它可能以 access violation 直接终结进程，任何 `try/except` 都拦不住（即 v1.0.12 所修的那次崩溃）。在 Intel Arc B580 上实测：`amdadlx64.dll` 全系统查无、import 成功、`Initialize()` 返回 `ADLX_FAIL` —— 也就是说 v1.0.12 的闸门确实有效，但它终究只是启发式判定。
+  - 修复：该依赖改为**按需手动安装**。`pip install ADLXPybind` 即可恢复 Windows AMD 的完整遥测；探测代码未做改动，装上后会自动识别。
+  - 已从 `requirements.txt`（保留为文档化的手动步骤）与 `pyproject.toml` 的 `dependencies` 中移除。
+  - 为什么不用子进程隔离替代：`AMDProvider` 需要在**整个会话期间**持有 ADLX 句柄以持续采样，能隔离的只有一次性探测那一步，稳态调用仍然保护不到。而「不安装这个依赖」是确定性的，闸门与子进程都只是概率性的。
+  - 新增：当检测到 AMD 显卡或 AMD 显示驱动、但 ADLX 不可用时，插件会打印明确且可操作的提示，而不是让机器一路落到一句空泛的 `no supported GPU detected`。两种情况分别提示——缺包（`pip install ADLXPybind`）与包已装但 `ADLX 初始化失败`（检查驱动）。
+  - provider 选择逻辑刻意保持不变：`_amd_gpu_present()` 是一道刻意宽松的闸门，不允许由它决定一台机器最终使用哪个 provider。
+  - 已验证：纯 Intel 机器仍选中 `IntelProvider`；新提示仅在强制放行 AMD 闸门且隐藏该包时触发；包可见时 AMD 路径行为完全不变。
+
+---
 
 ### v1.0.12 — 2026-09-23
 

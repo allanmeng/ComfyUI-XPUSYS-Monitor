@@ -304,7 +304,7 @@ For each AI precision format (FP32, FP16, BF16, FP8, FP4, INT8, INT4), the toolt
 
 - **Intel Arc (XPU)** — via Level Zero Sysman; full support for power, frequency, and temperature
 - **NVIDIA (CUDA)** — via pynvml; full support
-- **AMD on Windows** — via **ADLX** (`ADLXPybind`); full support for load, clock, temperature, VRAM, and power, no admin required. Installed automatically on Windows via `pip install ADLXPybind`.
+- **AMD on Windows** — via **ADLX** (`ADLXPybind`); full support for load, clock, temperature, VRAM, and power, no admin required. **Optional dependency** — install it yourself with `pip install ADLXPybind`. It is intentionally *not* auto-installed: without it the monitor still reports CPU / RAM and logs an explicit hint.
 - **AMD on Linux / ROCm** — via **amdsmi** (official successor to `rocm_smi_lib`); full support for load, clock, temperature, VRAM, and power. Legacy `rocm_smi` remains as a compatibility fallback. Optional: `pip install amdsmi`
 - **AMD fallback** — basic `torch.cuda` allocator stats when no vendor telemetry is available
 
@@ -403,7 +403,7 @@ pip install -r requirements.txt
 |---------|---------|
 | `psutil` | CPU / memory monitoring (required) |
 | `pynvml` | NVIDIA GPU monitoring (optional for non-NVIDIA setups) |
-| `ADLXPybind` | AMD GPU monitoring on **Windows** (auto-installed; `platform_system == "Windows"`) |
+| `ADLXPybind` | AMD GPU monitoring on **Windows** (optional — install manually with `pip install ADLXPybind`; not auto-installed on purpose) |
 | `amdsmi` | AMD GPU monitoring on **Linux / ROCm** (optional; official successor to `rocm_smi_lib`) |
 
 > **Note**: `torch` and `aiohttp` are provided by ComfyUI itself — no separate installation needed.

@@ -301,7 +301,7 @@ SPEC FP16 117T 456GB/s  (Intel Arc B580)
 
 - **Intel Arc (XPU)** — 基于 Level Zero Sysman，完整支持功耗、频率、温度监控
 - **NVIDIA (CUDA)** — 基于 pynvml，完整支持
-- **AMD on Windows** — 基于 **ADLX**（`ADLXPybind`），完整支持负载、频率、温度、显存、功耗，无需管理员权限。Windows 下随 `pip install ADLXPybind` 自动安装
+- **AMD on Windows** — 基于 **ADLX**（`ADLXPybind`），完整支持负载、频率、温度、显存、功耗，无需管理员权限。**需手动安装**：`pip install ADLXPybind`。该依赖刻意不做自动安装——未安装时插件仍提供 CPU / 内存 遥测，并会打印明确提示。
 - **AMD on Linux / ROCm** — 基于 **amdsmi**（官方继任者，替代 `rocm_smi_lib`），完整支持负载、频率、温度、显存、功耗。旧 `rocm_smi` 保留为兼容兜底。可选安装：`pip install amdsmi`
 - **AMD 兜底** — 无厂商遥测时降级为 `torch.cuda` 基础分配统计
 
@@ -400,7 +400,7 @@ pip install -r requirements.txt
 |----|------|
 | `psutil` | CPU / 内存监控（必须） |
 | `pynvml` | NVIDIA GPU 监控（非 NVIDIA 环境可忽略） |
-| `ADLXPybind` | AMD GPU 监控——**Windows** 平台自动安装（`platform_system == "Windows"`） |
+| `ADLXPybind` | AMD GPU 监控——**Windows** 平台（可选，需手动安装：`pip install ADLXPybind`；刻意不做自动安装） |
 | `amdsmi` | AMD GPU 监控——**Linux / ROCm** 平台可选安装（官方继任者，替代 `rocm_smi_lib`） |
 
 > **注意**：`torch` 和 `aiohttp` 由 ComfyUI 自身提供，无需单独安装。
