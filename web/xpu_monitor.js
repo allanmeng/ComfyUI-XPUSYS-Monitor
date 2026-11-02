@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.15";
+const VERSION = "1.0.16";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -32,79 +32,54 @@ const S = {
   sparkCharts:   `${NS}.SparkCharts`,
 };
 
-// Intel Arc PCI device ID → spec TBP (W) — Intel ARK / product pages / NotebookCheck
-// Only includes cards with practical AI inference capability (≥8 GB VRAM or workstation Pro series)
-const ARC_PCI_TGP = {
-  // ── Battlemage (Xe2) — B series consumer ─────────────────────────────────
-  "0xe20b": 190,   // Arc B580        (desktop, 12 GB)
-  "0xe20a": 190,   // Arc B770        (desktop, 16 GB, announced)
-  "0xe20c": 150,   // Arc B570        (desktop, 10 GB)
-  "0xe208": 120,   // Arc B580M       (mobile, 12 GB)
-  "0xe209": 100,   // Arc B570M       (mobile, 10 GB)
+// Intel Arc PCI device ID → spec TBP (W) and marketing name.
+//
+// SINGLE SOURCE OF TRUTH: web/gpu_specs.json (served as /xpusys/specs).
+// Both maps below are DERIVED from it in rebuildPciIndex() — do not hand-edit
+// them, and do not add a second copy of this data anywhere.  Until v1.0.15 they
+// were two hand-maintained literals here, and they had drifted from the JSON in
+// both directions: three values disagreed and three cards were missing entirely
+// (Arc A310, Pro B65, Pro B70), so a B70 fell through to the backend reading.
+// Change TBP data in gpu_specs.json only; verify new numbers against Intel ARK.
+//
+// Populated on the first /xpusys/specs response.  Empty until then, which is
+// harmless: resolveTGP() then falls back to the driver's own defaultLimit
+// (snap.tgp_w), and resolveDeviceName() falls back to the raw driver string.
+// Both callers are transient — the dock subtitle re-renders on the next poll
+// and the rest are hover tooltips, i.e. always after the specs have landed.
+let ARC_PCI_TGP   = {};
+let ARC_PCI_NAMES = {};
 
-  // ── Battlemage (Xe2) — B series Pro (workstation) ─────────────────────────
-  "0xe211": 200,   // Arc Pro B60     (desktop, 24 GB, TBP 120–200 W, use max)
-  "0xe212": 70,    // Arc Pro B50     (desktop, 16 GB)
-
-  // ── Alchemist (Xe-HPG) — A series consumer desktop ───────────────────────
-  "0x56a0": 225,   // Arc A770        (desktop, 16 GB)
-  "0x56a1": 150,   // Arc A750        (desktop, 8 GB)
-  "0x56a2": 75,    // Arc A580        (desktop, 8 GB)
-  "0x56a5": 75,    // Arc A380        (desktop, 6 GB — borderline, kept)
-
-  // ── Alchemist (Xe-HPG) — A series consumer mobile ────────────────────────
-  "0x5690": 150,   // Arc A770M       (120–150 W configurable, use max)
-  "0x5691": 120,   // Arc A730M       (80–120 W configurable, use max)
-  "0x5696": 80,    // Arc A570M       (50–80 W configurable, use max)
-  "0x5692": 80,    // Arc A550M       (60–80 W configurable, use max)
-  "0x5697": 50,    // Arc A530M       (35–50 W configurable, use max)
-
-  // ── Alchemist (Xe-HPG) — A series Pro (workstation) ──────────────────────
-  "0x56b3": 130,   // Arc Pro A60     (desktop, 12 GB)
-  "0x56b2": 75,    // Arc Pro A60M    (mobile, 8 GB)   — device ID: 56B2
-  "0x56b1": 50,    // Arc Pro A40/A50 (desktop, 6 GB)  — shared device ID
-  "0x56b0": 35,    // Arc Pro A30M    (mobile, 4 GB)
-};
-
-// Intel Arc PCI device ID → marketing name
-const ARC_PCI_NAMES = {
-  // ── Battlemage (Xe2) — B series consumer ─────────────────────────────────
-  "0xe20b": "Intel Arc B580",
-  "0xe20a": "Intel Arc B770",
-  "0xe20c": "Intel Arc B570",
-  "0xe208": "Intel Arc B580M",
-  "0xe209": "Intel Arc B570M",
-
-  // ── Battlemage (Xe2) — B series Pro (workstation) ─────────────────────────
-  "0xe211": "Intel Arc Pro B60",
-  "0xe212": "Intel Arc Pro B50",
-
-  // ── Alchemist (Xe-HPG) — A series consumer desktop ───────────────────────
-  "0x56a0": "Intel Arc A770",
-  "0x56a1": "Intel Arc A750",
-  "0x56a2": "Intel Arc A580",
-  "0x56a5": "Intel Arc A380",
-
-  // ── Alchemist (Xe-HPG) — A series consumer mobile ────────────────────────
-  "0x5690": "Intel Arc A770M",
-  "0x5691": "Intel Arc A730M",
-  "0x5696": "Intel Arc A570M",
-  "0x5692": "Intel Arc A550M",
-  "0x5697": "Intel Arc A530M",
-
-  // ── Alchemist (Xe-HPG) — A series Pro (workstation) ──────────────────────
-  "0x56b3": "Intel Arc Pro A60",
-  "0x56b2": "Intel Arc Pro A60M",
-  "0x56b1": "Intel Arc Pro A40/A50", // A40 and A50 share the same device ID
-  "0x56b0": "Intel Arc Pro A30M",
-};
+function rebuildPciIndex() {
+  const tgp   = {};
+  const names = {};
+  for (const [pci, entries] of Object.entries(GPU_SPECS || {})) {
+    const key = pci.toLowerCase();
+    for (const e of entries || []) {
+      if (e.vendor !== "intel") continue;
+      // Several cards share one PCI ID (Pro A40/A50 = 0x56b1).  Keep the
+      // largest TBP so the load ratio can never read >100% on the bigger
+      // card of the pair — under-reporting is the safer error here.
+      const w = e?.specs?.tgp_w;
+      if (typeof w === "number" && w > 0) {
+        tgp[key] = Math.max(tgp[key] || 0, w);
+      }
+      if (e.name && !names[key]) names[key] = e.name;
+    }
+  }
+  ARC_PCI_TGP   = tgp;
+  ARC_PCI_NAMES = names;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function resolveTGP(snap) {
-  // Table (Intel ARK specs) takes priority over backend reading
+  // Spec table (gpu_specs.json) wins over the driver reading, so that this
+  // denominator agrees with the "TGP" row in the SPEC tooltip.  The driver
+  // value (snap.tgp_w) is the fallback for cards missing from the table, and
+  // it is the only value available before /xpusys/specs resolves.
   if (snap.device_name) {
     const m = snap.device_name.match(/\[0x([0-9a-fA-F]+)\]/);
     if (m) {
@@ -949,6 +924,13 @@ function initSpecs() {
       GPU_SPECS   = data.cards   || {};
       GPU_PENDING = data.pending || [];
       GPU_FORMATS = data.formats || {};
+      // Derive the PCI → TGP / name indexes from the JSON we just loaded.
+      // This is the only place those maps are populated — see the note above
+      // resolveTGP() for why they must not be hand-maintained.
+      rebuildPciIndex();
+      // Everything else that reads the new index (dock subtitle, dock chart
+      // titles, PWR capsule) refreshes on the next poll, ≤1 s away.  Do NOT
+      // call renderSnap() here: it would push a duplicate sparkline sample.
       if (_snap) renderSpec(_snap);
     })
     .catch(() => { /* silent — no specs available */ });
@@ -1206,8 +1188,10 @@ const DOCK_CHARTS = [
     value: (s) => (s.vram_total_gb > 0 ? (s.vram_driver_used_gb / s.vram_total_gb) * 100 : 0),
     critical: (s) => s.vram_total_gb > 0 && (s.vram_driver_used_gb / s.vram_total_gb) > 0.95 },
   { key: "power", color: "purple", title: () => t("功耗", "Power"),
-    value: (s) => (s.power_available && s.tgp_w > 0 ? (s.power_w / s.tgp_w) * 100 : -1),
-    critical: (s) => s.power_available && s.tgp_w > 0 && (s.power_w / s.tgp_w) > 0.95 },
+    // resolveTGP() — not snap.tgp_w directly, so this series uses the same
+    // denominator as the PWR capsule and its tooltip.
+    value: (s) => (s.power_available && resolveTGP(s) > 0 ? (s.power_w / resolveTGP(s)) * 100 : -1),
+    critical: (s) => s.power_available && resolveTGP(s) > 0 && (s.power_w / resolveTGP(s)) > 0.95 },
   { key: "cpu",   color: "blue",   title: () => t("CPU 占用", "CPU Usage"),
     value: (s) => s.cpu_pct ?? 0,
     critical: (s) => (s.cpu_pct ?? 0) > 80 },

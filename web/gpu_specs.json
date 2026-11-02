@@ -1,7 +1,7 @@
 {
  "version": "1.0",
  "source": "blackwood.cv GPU AI Perf Assembly · PCI ID Repository · DeviceHunt",
- "updated": "2026-07-04",
+ "updated": "2026-11-03",
  "formats": {
   "Pascal": "++---+-",
   "Turing": "+*---*=",
@@ -1066,7 +1066,7 @@
      "bw_gbs": 512,
      "fp32_tflops": 12.29,
      "int8_tops": 192,
-     "tgp_w": 225
+     "tgp_w": 185
     }
    }
   ],

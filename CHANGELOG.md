@@ -6,6 +6,27 @@
 
 ## English
 
+### v1.0.16 — 2026-11-03
+
+#### 🐛 Bug Fixes
+
+- **The TGP table had drifted from `gpu_specs.json` in both directions.** The frontend kept a hand-written `ARC_PCI_TGP` literal *and* `gpu_specs.json`, and the two no longer agreed:
+  - **Three cards were missing from the literal**, including **Arc Pro B70 (`0xe223`)** and **Pro B65 (`0xe222`)** — so those cards had no entry and their power ratio fell back to whatever the backend reported. Same for the A310 (`0x56a6`).
+  - **Three values disagreed.** A750 was `150` in the literal vs `225` in the JSON; A580 was `75` vs `225`; Pro A40/A50 was `50` vs `75`.
+  - Worst of all, **A580 was wrong in both places** (Intel ARK: **185 W**), and the literal had its entry on the wrong PCI ID from the first commit (`0x56a5` — actually the A380 — was commented as "A580").
+
+  Fix: `gpu_specs.json` is now the **single source of truth**. The literal tables are gone; `ARC_PCI_TGP` / `ARC_PCI_NAMES` are derived from the loaded specs in `rebuildPciIndex()`, so they cannot drift again. Where several cards share one PCI ID (Pro A40/A50 = `0x56b1`) the **largest** TBP is kept, so the ratio can never exceed 100 % on the bigger card. A580 corrected to 185 W and the JSON's `updated` date bumped.
+
+- **The dock power spark chart used a different denominator than the PWR capsule.** `DOCK_CHARTS` read `snap.tgp_w` directly while the capsule and its tooltip went through `resolveTGP()`. It now calls `resolveTGP()` too, so all three agree — and this closes the remaining half of the v1.0.15 bug, where that one series kept running ~2x high even after the struct offset was fixed.
+
+#### 📝 Notes
+
+- Verified against Intel ARK / official product pages on 2026-11-03: A770 225 W, A750 225 W, **A580 185 W**, A380 75 W, A310 75 W, Pro A40 50 W / Pro A50 75 W, Pro B70 230 W, Pro B65 200 W, Pro B60 120–200 W, Pro B50 70 W, B580 190 W.
+- Behaviour before `/xpusys/specs` resolves is unchanged and safe: `resolveTGP()` falls back to the driver value (`snap.tgp_w`, correct since v1.0.15) and `resolveDeviceName()` to the raw driver string. Both call sites are transient (dock subtitle refreshes on the next poll, the rest are hover tooltips).
+- 27 assertions run against the real functions extracted from `xpu_monitor.js` and the real JSON, including the pre-fetch fallback path, all 23 Intel entries, and the dock chart math.
+
+---
+
 ### v1.0.15 — 2026-11-03
 
 #### 🐛 Bug Fixes
@@ -345,6 +366,27 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.16 — 2026-11-03
+
+#### 🐛 问题修复
+
+- **TGP 表与 `gpu_specs.json` 双向漂移。** 前端同时维护着手写的 `ARC_PCI_TGP` 字面量和 `gpu_specs.json`，两边早已不一致：
+  - **字面量缺了 3 张卡**，其中包含 **Arc Pro B70（`0xe223`）** 和 **Pro B65（`0xe222`）**——这两张卡没有任何表项，功率比例只能退回到后端读数；A310（`0x56a6`）同样缺失。
+  - **3 个数值互相矛盾**：A750 字面量 `150` / JSON `225`；A580 `75` / `225`；Pro A40/A50 `50` / `75`。
+  - 最糟的是 **A580 两边都错**（Intel ARK 为 **185 W**），而且字面量从首个 commit 起就把条目标错了 PCI ID（`0x56a5`——实际是 A380——被注释成 "A580"）。
+
+  修复：`gpu_specs.json` 现在是**唯一数据源**。字面量表已删除，`ARC_PCI_TGP` / `ARC_PCI_NAMES` 由加载后的规格在 `rebuildPciIndex()` 中派生，不会再漂移。多张卡共用一个 PCI ID 时（Pro A40/A50 = `0x56b1`）取**最大值**，保证大卡的比例不会超过 100%。A580 已更正为 185 W，JSON 的 `updated` 日期同步更新。
+
+- **dock 功耗火花曲线用的分母与功率胶囊不一致。** `DOCK_CHARTS` 直接读 `snap.tgp_w`，而胶囊和 tooltip 走 `resolveTGP()`。现在三者统一走 `resolveTGP()`——这也补上了 v1.0.15 遗留的另一半：结构体偏移修好后，那条曲线仍在虚高约 2 倍。
+
+#### 📝 说明
+
+- 2026-11-03 对照 Intel ARK / 官方产品页核实：A770 225 W、A750 225 W、**A580 185 W**、A380 75 W、A310 75 W、Pro A40 50 W / Pro A50 75 W、Pro B70 230 W、Pro B65 200 W、Pro B60 120–200 W、Pro B50 70 W、B580 190 W。
+- `/xpusys/specs` 返回之前的行与之前一致且安全：`resolveTGP()` 回退到驱动值（`snap.tgp_w`，v1.0.15 起已正确），`resolveDeviceName()` 回退到驱动原始字符串。两处调用都是瞬时的（dock 副标题在下一次轮询即刷新，其余都是悬停 tooltip）。
+- 用从 `xpu_monitor.js` 原样抽出的真实函数 + 真实 JSON 跑了 27 条断言，覆盖预加载回退路径、全部 23 条 Intel 条目、以及 dock 曲线算式。
+
+---
 
 ### v1.0.15 — 2026-11-03
 
