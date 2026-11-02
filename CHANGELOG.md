@@ -6,6 +6,23 @@
 
 ## English
 
+### v1.0.14 — 2026-11-02
+
+#### 🐛 Bug Fixes
+
+- **Executed nodes were saved as `mode: 4` (BYPASS) in the PNG's embedded workflow**: the VRAM predictor's node hook installed an **own-property accessor** on `node.mode` (`Object.defineProperty(node, "mode", {...})`) in order to notice bypass/mute changes. Since frontend 1.57.x, `LGraphNode` keeps its fields in an internal `_state` object and exposes `get/set mode` on the **prototype**; an own property necessarily shadows that accessor. The hook's setter only updated a closure variable and never wrote back, so as soon as a node crossed between BYPASS and active, the two readers disagreed:
+  - execution (`graphToPrompt` → `if (node.mode === BYPASS) continue`) hits the instance getter → sees the new value → the node really runs;
+  - serialization (`serializeFromStoreState(this._state)` → `mode: e.mode`) reads `_state` **directly**, bypassing the getter → still sees the old BYPASS value → it gets written into the workflow.
+  Result: a PNG whose `prompt` block proves the node executed while its `workflow` block claims `mode: 4`. Reproduced on three real outputs — a 13-node graph with 4 false BYPASS entries (all four present in `prompt`), and a 43-node graph with 4 false out of 30 flagged (the other 26 were genuinely bypassed, which is what made the split easy to miss).
+  - Only nodes that were **already BYPASS when the hook was installed and were re-enabled later in the session** were hit; nodes bypassed after hooking stayed correct.
+  - Fix: the accessor is gone. Mode changes are now observed through the official `node:property:changed` graph event (`graph.events.addEventListener`), which carries `{ nodeId, property, oldValue, newValue }` and is what the frontend itself emits from `setTrackedNodeState()`. The plugin no longer writes anything to the node, so execution and serialization cannot diverge.
+  - Three side effects disappear with it: `mode` is enumerable again (`{...node}` / `JSON.stringify(node)` snapshots stop losing it), the frontend's change tracking / dirty flag / undo keep seeing mode edits, and the reverse case is closed — bypassing a node in-session used to be saved as *enabled*, which would silently re-run "disabled" nodes on the next open.
+  - Mode changes inside **subgraphs** are covered too; the subscription is made per graph instance.
+  - ⚠️ Workflows already saved while this bug was active keep the wrong `mode` values in their UI graph (the `prompt` block and the generated images are unaffected). Re-save them after updating.
+  - Verified with a harness that reproduces the frontend's `_state` semantics: the new code installs no own property, keeps `_state.mode` and the getter in sync in both directions, and refreshes the predictor on mode changes — while the old code reproduces `state=4 | getter=0` under the same harness.
+
+---
+
 ### v1.0.13 — 2026-09-23
 
 #### 🐛 Bug Fixes
@@ -305,6 +322,23 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.14 — 2026-11-02
+
+#### 🐛 问题修复
+
+- **真正执行过的节点被写成 `mode: 4`（BYPASS）存进 PNG 的内嵌 workflow**：显存预测器给节点装了一个 **实例自有访问器** `Object.defineProperty(node, "mode", {...})` 来监听 bypass / mute 变化。而前端 1.57.x 起，`LGraphNode` 把字段收进内部 `_state`，`get/set mode` 挂在**原型**上——实例自有属性必然把它遮蔽。该 setter 只更新闭包变量、从不写回，于是一旦节点在「BYPASS ↔ 启用」之间切换，两条读取路径就开始各看一份数据：
+  - 执行侧（`graphToPrompt` → `if (node.mode === BYPASS) continue`）走实例 getter → 拿到新值 → 节点**真的执行了**；
+  - 序列化侧（`serializeFromStoreState(this._state)` → `mode: e.mode`）**直读 `_state`**、绕过 getter → 仍是旧的 BYPASS 值 → 被写进工作流。
+  结果：PNG 的 `prompt` 块证明该节点跑了，`workflow` 块却标着 `mode: 4`。三张真实产出复现——13 节点图有 4 个假 BYPASS（4 个全在 `prompt` 里），43 节点图 30 个标记里 4 个是假、26 个是真（真 bypass 的存在正是这个问题难以自查的原因）。
+  - 只有**安装钩子时已处于 BYPASS、之后在会话内又被重新启用**的节点会中招；挂钩之后才 bypass 的节点一切正常。
+  - 修复：删除该访问器。模式变化改用官方 `node:property:changed` 图事件（`graph.events.addEventListener`）监听，事件载荷为 `{ nodeId, property, oldValue, newValue }`，也就是前端 `setTrackedNodeState()` 自己抛出的那个事件。插件不再往节点上写任何东西，执行与序列化不可能再分裂。
+  - 连带消除三个副作用：`mode` 恢复可枚举（`{...node}` / `JSON.stringify(node)` 快照不再丢字段）；前端的变更追踪 / 未保存标记 / undo 重新能感知 mode 变化；反向情形也一并修好——此前在会话内 bypass 一个已挂钩节点会被**存成启用**，下次打开会静默执行你以为已经关掉的节点。
+  - **子图**内的模式变化同样覆盖：订阅按 graph 实例建立。
+  - ⚠️ 在此 bug 存在期间已保存的工作流，其 UI 图里仍留着错误的 `mode` 值（`prompt` 块与已生成的图片本身不受影响）。升级后请重新保存一次。
+  - 验证：用一套复刻前端 `_state` 语义的测试台跑通——新代码不再装实例属性，`_state.mode` 与 getter 双向一致，模式变化能触发预测器刷新；同一测试台里旧代码如实复现出 `state=4 | getter=0` 的分裂。
+
+---
 
 ### v1.0.13 — 2026-09-23
 

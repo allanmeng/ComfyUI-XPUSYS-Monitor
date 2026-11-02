@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.13";
+const VERSION = "1.0.14";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -2137,7 +2137,7 @@ function applyModelHook(node) {
     w._xpusysPredHooked = true;
   });
 
-  // 只对含模型 widget 的节点挂 bypass / 删除钩子
+  // 只对含模型 widget 的节点挂删除钩子
   if (hasModel && !node._xpusysNodeHooked) {
     // 监听节点被移除
     const origRemoved = node.onRemoved;
@@ -2145,20 +2145,31 @@ function applyModelHook(node) {
       if (origRemoved) origRemoved.apply(this, arguments);
       updatePredictor();
     };
-    // 使用 Object.defineProperty 监听 mode 属性变化
-    let _mode = node.mode;
-    Object.defineProperty(node, "mode", {
-      get: function() { return _mode; },
-      set: function(v) {
-        if (_mode !== v) {
-          _mode = v;
-          updatePredictor();
-        }
-      },
-      configurable: true
-    });
     node._xpusysNodeHooked = true;
   }
+
+  hookGraphEvents(node.graph || app.graph);
+}
+
+// ── bypass / mute 变化监听：只用官方图事件，不碰节点自身的属性 ──────────────
+// 历史实现（≤v1.0.13）用 Object.defineProperty 在节点实例上装了一个 mode 访问器。
+// 前端 1.57.x 起 LGraphNode 把字段迁进内部 _state（原型上是 get/set mode），
+// 实例自有访问器会遮蔽原型，而那个 setter 只更新闭包、不写回 _state：
+//   · 执行侧 graphToPrompt 读 node.mode（命中实例 getter）→ 判定为活跃，正常执行
+//   · 序列化侧 serializeFromStoreState 直读 this._state.mode（绕过 getter）→ 仍写成 BYPASS
+// 结果：产出 PNG 内嵌的 workflow 把真正执行过的节点标成 mode:4。
+// v1.0.14 起改为订阅官方 node:property:changed（图事件，2026 前端已标准化）。
+const _xpusysEventGraphs = new WeakSet();
+
+function hookGraphEvents(graph) {
+  if (!graph || typeof graph !== "object" || _xpusysEventGraphs.has(graph)) return;
+  const ev = graph.events;
+  if (!ev || typeof ev.addEventListener !== "function") return;
+  ev.addEventListener("node:property:changed", (e) => {
+    const prop = e?.detail?.property;
+    if (prop === "mode") updatePredictor();
+  });
+  _xpusysEventGraphs.add(graph);
 }
 
 // Debounced entry point — called by graph event hooks
@@ -2475,6 +2486,7 @@ app.registerExtension({
     initSpecs();
 
     // 对已存在节点补挂 widget 钩子，然后初始扫描
+    hookGraphEvents(app.graph);
     app.graph._nodes?.forEach(n => applyModelHook(n));
     updatePredictor();
   },
@@ -2490,6 +2502,7 @@ app.registerExtension({
 
   async afterConfigureGraph() {
     // 对所有节点应用 hook，然后更新预测
+    hookGraphEvents(app.graph);
     app.graph._nodes?.forEach(n => applyModelHook(n));
     updatePredictor();
   },
