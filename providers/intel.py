@@ -27,11 +27,24 @@ logger = logging.getLogger("XPUSYSMonitor")
 ZE_RESULT_SUCCESS = 0
 ZE_RESULT_ERROR_INSUFFICIENT_PERMISSIONS = 0x78000003
 
-# zes_structure_type_t values
-_ZES_STYPE_MEM_STATE  = 0x18
-_ZES_STYPE_FREQ_STATE = 0x11
-_ZES_STYPE_FREQ_PROPS = 0x10
-_ZES_STYPE_TEMP_PROPS = 0x35
+# zes_structure_type_t values — authoritative source is oneapi-src/level-zero
+# include/zes_api.h.  The previous values (0x10/0x11/0x18/0x35) came from
+# misreading that enum: they are the *sched_properties* / *sched_timeout* /
+# *fabric_port_config* / (nonexistent) slots.  Intel's Windows driver ignores
+# stype entirely, so the wrong values were harmless there; a strict driver is
+# entitled to reject the struct (ZE_RESULT_ERROR_INVALID_ARGUMENT) or, worse,
+# parse it as the type it claims to be.
+_ZES_STYPE_MEM_STATE  = 0x1E   # ZES_STRUCTURE_TYPE_MEM_STATE
+_ZES_STYPE_FREQ_STATE = 0x1B   # ZES_STRUCTURE_TYPE_FREQ_STATE
+_ZES_STYPE_FREQ_PROPS = 0x09   # ZES_STRUCTURE_TYPE_FREQ_PROPERTIES
+_ZES_STYPE_TEMP_PROPS = 0x14   # ZES_STRUCTURE_TYPE_TEMP_PROPERTIES
+_ZES_STYPE_POWER_PROPS = 0x0D  # ZES_STRUCTURE_TYPE_POWER_PROPERTIES
+_ZES_STYPE_DEVICE_PROPS = 0x01 # ZES_STRUCTURE_TYPE_DEVICE_PROPERTIES
+
+# Reminder for every struct below: ze_bool_t is uint8_t (ze_api.h:105), so a
+# bool member occupies ONE byte and the following uint32/double does NOT land
+# where a c_uint32 bool would put it.  This is why the power/freq properties
+# offsets look "off by 4" against a naive reading of the header.
 
 _ZES_FREQ_DOMAIN_GPU  = 0   # ZES_FREQ_DOMAIN_GPU
 _ZES_TEMP_SENSORS_GPU = 1   # ZES_TEMP_SENSORS_GPU
@@ -243,7 +256,7 @@ class _LevelZeroSysman:
             fn.restype  = ctypes.c_int
             fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
             buf = (ctypes.c_uint8 * 2048)()
-            ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0] = 0x1
+            ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0] = _ZES_STYPE_DEVICE_PROPS
             ret = fn(device, buf)
             if ret != ZE_RESULT_SUCCESS:
                 logger.debug(f"XPUSYSMonitor: zesDeviceGetProperties ret={ret:#010x}")
@@ -280,7 +293,7 @@ class _LevelZeroSysman:
             fn.restype  = ctypes.c_int
             fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
             cbuf = (ctypes.c_uint8 * 2048)()
-            # ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x1
+            # ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES = 0x1 (core API, not Sysman)
             ctypes.cast(cbuf, ctypes.POINTER(ctypes.c_uint32))[0] = 0x1
             ret = fn(device, cbuf)
             if ret != ZE_RESULT_SUCCESS:
@@ -329,20 +342,43 @@ class _LevelZeroSysman:
             logger.debug("XPUSYSMonitor: TGP unknown — using domain[0] for energy counter only")
 
     def _read_tgp(self, lib, power_handle, domain_idx: int = 0) -> float:
+        """Return this power domain's sustained (default) limit in watts, or 0.0.
+
+        zes_power_properties_t (64-bit, ze_bool_t = uint8_t):
+          +0  stype(4) +4 pad +8 pNext(8)
+          +16 onSubdevice (1B)     +20 subdeviceId (u32)
+          +24 canControl  (1B)     +25 isEnergyThresholdSupported (1B)
+          +28 defaultLimit (int32, mW)  ← the factory TGP (B580: 190000)
+          +32 minLimit     (int32, mW)  ← B580: 95000
+          +36 maxLimit     (int32, mW)  ← B580: 228000
+
+        v1.0.14 read defaultLimit from +32 and maxLimit from +40, i.e. it
+        returned minLimit as the TGP.  On B580 that showed a 95 W "TGP Limit"
+        and inflated every power percentage by ~2x (2026-11-03, A/B verified).
+        """
         try:
             fn = lib.zesPowerGetProperties
             fn.restype  = ctypes.c_int
             fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-            buf = (ctypes.c_uint8 * 64)()
-            ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0] = 0xd
+            buf = (ctypes.c_uint8 * 48)()
+            ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0] = _ZES_STYPE_POWER_PROPS
             ret = fn(power_handle, buf)
-            def_mw = ctypes.cast(ctypes.addressof(buf) + 32, ctypes.POINTER(ctypes.c_int32))[0]
-            max_mw = ctypes.cast(ctypes.addressof(buf) + 40, ctypes.POINTER(ctypes.c_int32))[0]
+            addr = ctypes.addressof(buf)
+
+            def i32(off):
+                return ctypes.cast(addr + off, ctypes.POINTER(ctypes.c_int32))[0]
+
+            def_mw = i32(28)
+            min_mw = i32(32)
+            max_mw = i32(36)
             logger.debug(
                 f"XPUSYSMonitor: domain[{domain_idx}] GetProperties "
-                f"ret={ret:#010x} defaultLimit={def_mw}mW maxLimit={max_mw}mW"
+                f"ret={ret:#010x} canControl={buf[24]} "
+                f"defaultLimit={def_mw}mW minLimit={min_mw}mW maxLimit={max_mw}mW"
             )
             if ret == ZE_RESULT_SUCCESS:
+                # Prefer the factory default (what Intel's own tool calls TDP);
+                # fall back to the raisable ceiling only if it is unknown.
                 for mw in (def_mw, max_mw):
                     if 0 < mw < 1_000_000:
                         tgp = mw / 1000.0
@@ -352,6 +388,13 @@ class _LevelZeroSysman:
             logger.debug(f"XPUSYSMonitor: zesPowerGetProperties domain[{domain_idx}] — {exc}")
 
         try:
+            # zesPowerGetLimits is the 4-argument legacy form
+            #   (hPower, pSustained, pBurst, pPeak) — NOT the Ext form
+            #   (hPower, pCount, pLimits).  Both exist in zes_api.h with
+            #   similar names; this call site is correct as written.
+            # zes_power_sustained_limit_t = { ze_bool_t enabled; int32 power;
+            #                                int32 interval; }
+            #   -> enabled@0 (1 byte), power@4 (int32 mW)
             fn2 = lib.zesPowerGetLimits
             fn2.restype  = ctypes.c_int
             fn2.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
@@ -397,18 +440,25 @@ class _LevelZeroSysman:
     def _setup_frequency(self, lib, device):
         """Enumerate ALL frequency domains, collect every ZES_FREQ_DOMAIN_GPU handle.
 
-        zes_freq_properties_t layout (64-bit, header = stype(4)+pad(4)+pNext(8)):
+        zes_freq_properties_t layout (64-bit, ze_bool_t = uint8_t so bools are
+        1 byte and every uint32/double lands earlier than a naive reading):
           offset  0 : stype        (uint32)
           offset  4 : padding
           offset  8 : pNext        (uint64)
-          offset 16 : type         (uint32)  ← zes_freq_domain_t
-          offset 20 : onSubdevice  (uint32)  ← ze_bool_t
-          offset 24 : subdeviceId  (uint32)
-          offset 28 : canControl   (uint32)  ← ze_bool_t, 1 = driver lets us set freq
-          offset 32 : isThrottleEventSupported (uint32)
-          offset 36 : padding
-          offset 40 : min          (double)
-          offset 48 : max          (double)
+          offset 16 : type         (uint32)   ← zes_freq_domain_t
+          offset 20 : onSubdevice  (uint8)    ← ze_bool_t
+          offset 24 : subdeviceId  (uint32)   (3 bytes pad after the bool)
+          offset 28 : canControl   (uint8)    ← ze_bool_t, 1 = we may set freq
+          offset 29 : isThrottleEventSupported (uint8)
+          offset 32 : min          (double)
+          offset 40 : max          (double)
+
+        v1.0.14 read canControl as 4 bytes at +28 (which swallows
+        isThrottleEventSupported at +29) and read min/max from +40/+48, i.e.
+        min was reported as +40 and max read past the struct.  Both were only
+        ever used for debug logging and the sort order, hence no user-visible
+        symptom — but canControl could come out as 256 (truthy) on a domain
+        with canControl=0 / isThrottleEventSupported=1.
 
         Stores self._freq_handles as a list of (handle, can_control, idx).
         Sorted so canControl=True entries come first — read_gpu_freq_mhz() will
@@ -449,9 +499,10 @@ class _LevelZeroSysman:
 
             addr        = ctypes.addressof(buf)
             domain      = ctypes.cast(addr + 16, ctypes.POINTER(ctypes.c_uint32))[0]
-            can_ctrl    = ctypes.cast(addr + 28, ctypes.POINTER(ctypes.c_uint32))[0]
-            freq_min    = ctypes.cast(addr + 40, ctypes.POINTER(ctypes.c_double))[0]
-            freq_max    = ctypes.cast(addr + 48, ctypes.POINTER(ctypes.c_double))[0]
+            # ze_bool_t is uint8_t — read ONE byte, not four.
+            can_ctrl    = buf[28]
+            freq_min    = ctypes.cast(addr + 32, ctypes.POINTER(ctypes.c_double))[0]
+            freq_max    = ctypes.cast(addr + 40, ctypes.POINTER(ctypes.c_double))[0]
             domain_name = "GPU" if domain == _ZES_FREQ_DOMAIN_GPU else f"type={domain}"
 
             logger.debug(

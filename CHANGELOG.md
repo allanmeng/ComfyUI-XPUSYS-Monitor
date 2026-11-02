@@ -6,6 +6,22 @@
 
 ## English
 
+### v1.0.15 — 2026-11-03
+
+#### 🐛 Bug Fixes
+
+- **"TGP Limit" was read from the wrong struct field — every power percentage was inflated ~2x** (`_read_tgp()` in `providers/intel.py`). `ze_bool_t` is `uint8_t` (`ze_api.h:105`), so the two boolean members of `zes_power_properties_t` occupy one byte each and `defaultLimit` sits at **+28**, not +32. The code read `defaultLimit` from +32 (which is actually `minLimit`) and `maxLimit` from +40 (past the end of the struct). On an Arc B580 that reported a **95 W "TGP Limit" instead of 190 W**, so the power capsule's percentage, its 80%/95% colour thresholds, and the "TGP Limit" tooltip row were all wrong. The bug only bit **admin** runs: without admin rights power is disabled entirely and the UI falls back to the bundled `gpu_specs.json` (which has the correct 190 W), so a non-admin session looked fine while an elevated one was worse. Verified A/B on a B580: `domain[1] defaultLimit@28 = 190000 mW / minLimit@32 = 95000 / maxLimit@36 = 228000` → `tgp_w` now 190 W, matching the spec table.
+- **`zes_freq_properties_t` offsets were off by one boolean** (`_setup_frequency()`): `canControl` was read as a 4-byte int at +28, which swallows `isThrottleEventSupported` at +29 (so a domain with `canControl=0, isThrottleEventSupported=1` came out as 256 → truthy), and `min`/`max` were read from +40/+48 instead of +32/+40. Impact was confined to the debug log line and the domain sort order, so no user-visible symptom — but the values are now correct.
+- **Four `zes_structure_type_t` constants were wrong**: `freq_properties` 0x10→**0x09**, `freq_state` 0x11→**0x1B**, `mem_state` 0x18→**0x1E**, `temp_properties` 0x35→**0x14** (the old values are the sched_properties / sched_timeout / fabric_port_config slots). Intel's **Windows** driver does not validate `stype` — confirmed by A/B on a B580: swapping all four to the spec values changes nothing, VRAM/frequency/power readings are byte-identical. A stricter driver is entitled to reject the struct, so this may matter on other platforms; it is fixed here on its own merit.
+- Also corrected: `zesPowerGetLimits` really is the **4-argument** legacy form `(hPower, pSustained, pBurst, pPeak)` — it is *not* the 3-argument `zesPowerGetLimitsExt(hPower, pCount, pLimits)`. The existing call site was already correct; a comment now records this so it does not get "fixed" into a crash.
+
+#### 📝 Notes
+
+- Unchanged and re-verified after the change on an Arc B580: VRAM free/total, GPU frequency, engine load, temperature sentinel, PCI ID and device name all match the previous build.
+- Structs without boolean members were audited and are correct as written: `zes_freq_state_t` (voltage@16, request@24, tdp@32, efficient@40, actual@48), `zes_mem_state_t` (health@16, free@24, size@32), `zes_temp_properties_t` (type@16). `zes_engine_stats_t` and `zes_power_energy_counter_t` genuinely have **no** `stype`/`pNext` header — they are 16-byte pure-out parameters, not a bug.
+
+---
+
 ### v1.0.14 — 2026-11-02
 
 #### 🐛 Bug Fixes
@@ -322,6 +338,22 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.15 — 2026-11-03
+
+#### 🐛 问题修复
+
+- **"TGP Limit"（功耗上限）读错了结构体字段，导致所有功率百分比虚高约 2 倍**（`providers/intel.py` 的 `_read_tgp()`）。`ze_bool_t` 实际是 `uint8_t`（`ze_api.h:105`），所以 `zes_power_properties_t` 里两个布尔成员各占 1 字节，`defaultLimit` 落在 **+28** 而不是 +32。原代码从 +32 读 `defaultLimit`（那其实是 `minLimit`），从 +40 读 `maxLimit`（已越过结构体末尾）。在 Arc B580 上的表现是 **"TGP Limit" 显示 95 W 而不是 190 W**，连带功率胶囊的百分比、80%/95% 配色阈值、tooltip 的 "TGP Limit" 行全部失真。这个 bug 只在**管理员**运行时发作：非管理员会整体禁用功率读取，UI 转而使用内置的 `gpu_specs.json`（B580 那里本来就是正确的 190 W），所以非管理员看着正常、提权后反而更差。B580 实测 A/B：`domain[1] defaultLimit@28 = 190000 mW / minLimit@32 = 95000 / maxLimit@36 = 228000` → `tgp_w` 现为 190 W，与规格表一致。
+- **修正 `zes_freq_properties_t` 的偏移（少算了一个布尔成员）**（`_setup_frequency()`）：`canControl` 原按 4 字节整型从 +28 读，会把 +29 的 `isThrottleEventSupported` 一起吞进去（于是 `canControl=0, isThrottleEventSupported=1` 的域会读成 256 → 被当成真），`min`/`max` 也从 +40/+48 读成了 +32/+40 之外的位置。影响面仅限调试日志和频率域的排序，用户看不到异常，但数值现已正确。
+- **四个 `zes_structure_type_t` 常量是错的**：`freq_properties` 0x10→**0x09**、`freq_state` 0x11→**0x1B**、`mem_state` 0x18→**0x1E**、`temp_properties` 0x35→**0x14**（旧值实际是 sched_properties / sched_timeout / fabric_port_config 的槽位）。Intel **Windows** 驱动不校验 `stype`——B580 上 A/B 实测：四个常量全部换成 spec 值后，显存/频率/功耗读数逐位一致。严格驱动有权拒绝这类结构体，故在其他平台上可能有真实影响；这里按"本就该对"独立修正。
+- 顺手澄清：`zesPowerGetLimits` 的真实签名是**4 参**旧式 `(hPower, pSustained, pBurst, pPeak)`，**不是** 3 参的 `zesPowerGetLimitsExt(hPower, pCount, pLimits)`。现有调用点本来就是对的，已加注释锁死，避免以后被"修"成崩溃。
+
+#### 📝 说明
+
+- 改动后在 Arc B580 上复测：显存空闲/总量、GPU 频率、引擎负载、温度哨兵值、PCI ID 与设备名均与上一版一致。
+- 不含布尔成员的结构体已逐一审计，结论是现有写法正确：`zes_freq_state_t`（volt@16、request@24、tdp@32、efficient@40、actual@48）、`zes_mem_state_t`（health@16、free@24、size@32）、`zes_temp_properties_t`（type@16）。`zes_engine_stats_t` 与 `zes_power_energy_counter_t` **确实没有** `stype`/`pNext` 头——它们是 16 字节纯输出参数，不是 bug。
+
+---
 
 ### v1.0.14 — 2026-11-02
 
