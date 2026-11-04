@@ -28,7 +28,7 @@ class GPUSnapshot:
     vram_reserved_gb:     float = 0.0   # torch cached / reserved pool
 
     # --- GPU ---
-    gpu_load_pct:  float = 0.0
+    gpu_load_pct:  float = -1.0   # GPU utilisation %       (-1 = unavailable)
     gpu_freq_mhz:  float = 0.0    # current GPU clock in MHz  (0 = unavailable)
     gpu_temp_c:    float = -1.0   # GPU core temp in °C       (-1 = unavailable)
 

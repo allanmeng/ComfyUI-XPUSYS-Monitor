@@ -415,12 +415,32 @@ class _LevelZeroSysman:
         f = lib.zesDeviceEnumEngineGroups
         f.restype = ctypes.c_int
         f.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32), ctypes.c_void_p]
-        cnt = ctypes.c_uint32(0); f(device, ctypes.byref(cnt), None)
+        cnt = ctypes.c_uint32(0)
+        ret = f(device, ctypes.byref(cnt), None)
         if cnt.value > 0:
             handles = (ctypes.c_void_p * cnt.value)()
             f(device, ctypes.byref(cnt), handles)
             self._engine_handles = list(handles)
             logger.debug(f"XPUSYSMonitor: {cnt.value} engine group(s) found.")
+            return
+        # A successful call returning zero groups is NOT "the GPU is idle" —
+        # it means this environment exposes no engine counters at all, and GPU
+        # load will read as unknown.  Say so, and say why it is not our fault.
+        if ret == ZE_RESULT_SUCCESS:
+            logger.warning(
+                "XPUSYSMonitor: Level Zero exposes 0 engine groups — GPU load "
+                "will show as unavailable. Engine counters come from the GPU "
+                "performance counters; on Linux they are usually blocked for "
+                "unprivileged users (kernel.perf_event_paranoid) and inside "
+                "containers. Run `intel_gpu_top` alongside to confirm: if it "
+                "also fails to read engines, this is an environment limit, "
+                "not a plugin fault."
+            )
+        else:
+            logger.warning(
+                f"XPUSYSMonitor: zesDeviceEnumEngineGroups failed "
+                f"ret={ret:#010x} — GPU load unavailable."
+            )
 
     def _setup_memory(self, lib, device):
         """Enumerate memory modules — enables GIL-free VRAM reads via zesMemoryGetState."""
@@ -799,7 +819,7 @@ class _LevelZeroSysman:
             return -1.0
 
     def read_gpu_load_pct(self) -> float:
-        """Return GPU utilisation %, or 0.0.
+        """Return GPU utilisation %, or -1.0 when it cannot be measured.
 
         Reports the BUSIEST engine group, not a fixed index. Matches Intel's
         own semantics (xpu-smi reports "the busiest engine rather than the
@@ -818,9 +838,23 @@ class _LevelZeroSysman:
         这正是用户反馈"一进采样也会涨、但数值对不上任务管理器"的原因。
         注意：真实扩散工作流峰值通常 60~70%（step 间有 kernel 间隙/同步开销），
         不会顶到 100%；100% 只在纯算力压满的合成负载下出现。
+
+        WHY -1.0 AND NOT 0.0 (v1.0.17)
+        ------------------------------
+        `zesDeviceEnumEngineGroups` can succeed (ret == ZE_RESULT_SUCCESS) and
+        still report **zero** engine groups.  Observed on an Arc Pro B70 under
+        Linux with the `xe` DRM driver: engine counters come from the GPU PMU,
+        which that environment cannot open, so Sysman exposes no engine group
+        at all — while the GPU is under heavy compute load and every other
+        metric (VRAM / clock / temp / power) reads fine.
+
+        Returning 0.0 there painted a reassuring green "GPU 0.0%" on a fully
+        loaded card, which is worse than showing nothing.  So: "no handles" or
+        "handles exist but none answered" now mean UNKNOWN (-1.0), while a
+        genuine measurement of an idle GPU still returns 0.0.
         """
         if not self._available or not self._engine_handles:
-            return 0.0
+            return -1.0
         try:
             fn = self._lib.zesEngineGetActivity
             fn.restype  = ctypes.c_int
@@ -837,11 +871,12 @@ class _LevelZeroSysman:
 
             s1 = _snapshot()
             if not s1:
-                return 0.0
+                return -1.0          # handles present but unusable
             time.sleep(0.05)
             s2 = _snapshot()
 
-            best = 0.0
+            best  = 0.0
+            seen  = False
             for idx, a in s1.items():
                 b = s2.get(idx)
                 if b is None:
@@ -849,10 +884,13 @@ class _LevelZeroSysman:
                 dA = b.activeTime - a.activeTime
                 dT = b.timestamp  - a.timestamp
                 if dT > 0:
+                    seen = True
                     best = max(best, (dA / dT) * 100.0)
+            if not seen:
+                return -1.0          # no usable delta → unknown, not idle
             return min(100.0, best)
         except Exception:
-            return 0.0
+            return -1.0
 
 
 # ---------------------------------------------------------------------------

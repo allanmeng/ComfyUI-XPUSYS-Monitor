@@ -6,6 +6,23 @@
 
 ## English
 
+### v1.0.17 — 2026-11-04
+
+#### 🐛 Bug Fixes
+
+- **GPU load was reported as a healthy green `0.0%` when it could not be measured at all.** `zesDeviceEnumEngineGroups` can return `ZE_RESULT_SUCCESS` and still expose **zero** engine groups. `read_gpu_load_pct()` treated that as "0 %", and the UI painted it green — so a card under heavy compute load displayed a reassuring `GPU 0.0%`, and the dock's GPU Load sparkline flat-lined at zero. Reported from a Linux Arc Pro B70 where the driver exposed no engine groups while every other metric (VRAM, clock, temperature, power) read correctly.
+  - `gpu_load_pct` now follows the same convention as `power_w` / `gpu_temp_c`: **`-1.0` means unavailable**. `0.0` is reserved for a genuine measurement of an idle GPU. The "handles exist but none answered" and "no usable delta" paths also return `-1.0` instead of `0.0`.
+  - UI: the GPU capsule shows `GPU ---` in the neutral N/A colour (matching its pre-first-poll placeholder), the tooltip row shows `N/A` plus a short explanation, and the dock sparkline skips the sample instead of drawing a false zero.
+  - The startup log now explains the condition instead of staying silent: a successful enumeration returning zero groups logs why engine counters can be unavailable (GPU PMU access — `kernel.perf_event_paranoid` on Linux, container isolation) and points at `intel_gpu_top` to confirm it is an environment limit rather than a plugin fault. A failed enumeration logs the return code.
+
+#### 📝 Notes
+
+- This does **not** make Linux work — `providers/intel.py` still hardcodes `ctypes.WinDLL("ze_loader.dll")`, so Linux users never reach Level Zero at all. That is a separate, larger change.
+- The original bare-metal SIGSEGV reported on Linux remains **unreproducible**: the reporter migrated to a Podman container where the crash no longer occurs, and neither the duplicate-loader hypothesis (a single `libze_loader` mapping with torch loaded) nor the `zes_structure_type_t` hypothesis (`spec` and `--legacy-stype` behave identically) is supported. It is not being marked fixed.
+- NVIDIA and AMD providers are unchanged: they keep returning `0.0` on a read failure. Their metrics come from NVML / ADLX where "zero" is a real reading, and changing them blind would risk a `---` flicker on transient driver errors.
+
+---
+
 ### v1.0.16 — 2026-11-03
 
 #### 🐛 Bug Fixes
@@ -366,6 +383,23 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.17 — 2026-11-04
+
+#### 🐛 问题修复
+
+- **测不到 GPU 负载时，显示的是健康的绿色 `0.0%`**。`zesDeviceEnumEngineGroups` 可以返回 `ZE_RESULT_SUCCESS` 却提供 **0 个**引擎组。`read_gpu_load_pct()` 把这种情况当成「0 %」，UI 又把它涂成绿色——于是一张正在满载计算的卡显示着让人安心的 `GPU 0.0%`，dock 的 GPU 负载曲线也拉成零。该问题由一位 Linux 上的 Arc Pro B70 用户报告：驱动未提供任何引擎组，而显存、频率、温度、功耗全部读数正常。
+  - `gpu_load_pct` 现在与 `power_w` / `gpu_temp_c` 采用同一约定：**`-1.0` 表示不可用**，`0.0` 只保留给「确实测到 GPU 空闲」。`有句柄但无人应答`、`无有效增量` 两条路径同样改为返回 `-1.0` 而非 `0.0`。
+  - UI：GPU 胶囊显示 `GPU ---` 并用中性的 N/A 配色（与首次轮询前的占位一致），tooltip 该行显示 `N/A` 并附一句简短说明，dock 曲线跳过该采样点而不是画一段假的零。
+  - 启动日志不再沉默：枚举成功但为 0 组时，会说明引擎计数为何可能不可用（需要 GPU PMU 访问权限——Linux 上是 `kernel.perf_event_paranoid`，容器环境下常被隔离），并提示用 `intel_gpu_top` 验证这是环境限制而非插件故障；枚举失败时则打印返回码。
+
+#### 📝 说明
+
+- 这**并不能让 Linux 跑起来**——`providers/intel.py` 仍然硬编码 `ctypes.WinDLL("ze_loader.dll")`，Linux 用户根本走不到 Level Zero。那是另一件更大的改动。
+- Linux 上最初的裸机 SIGSEGV 仍**无法复现**：报告者已迁到 Podman 容器，崩溃不再出现；且「双份 loader」（torch 加载后只有 1 份 `libze_loader` 映射）与「`zes_structure_type_t` 错值」（`spec` 与 `--legacy-stype` 表现完全一致）两个假设都未获支持。因此**不标记为已修复**。
+- NVIDIA 与 AMD provider 未改动：读取失败时仍返回 `0.0`。它们的指标来自 NVML / ADLX，那里的「零」是真实读数，盲改反而可能让瞬时驱动错误闪烁成 `---`。
+
+---
 
 ### v1.0.16 — 2026-11-03
 

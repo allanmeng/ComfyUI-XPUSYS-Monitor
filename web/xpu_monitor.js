@@ -14,7 +14,7 @@ import { api } from "../../scripts/api.js";
 // ---------------------------------------------------------------------------
 
 const NS      = "XPUSYS_Mon";
-const VERSION = "1.0.16";
+const VERSION = "1.0.17";
 const GITHUB  = "https://github.com/allanmeng/ComfyUI-XPUSYS-Monitor";
 const S = {
   lang:          `${NS}.Language`,
@@ -1182,8 +1182,10 @@ function rebuildDockCharts(order) {
 // critical(s) 与胶囊颜色阈值一致——true 时对应 box 显示统一半透明红背景
 const DOCK_CHARTS = [
   { key: "load",  color: "cyan",   title: () => t("GPU 负载", "GPU Load"),
-    value: (s) => s.gpu_load_pct ?? 0,
-    critical: (s) => (s.gpu_load_pct ?? 0) > 95 },
+    // -1 propagates as "unavailable": pushChartHistory() skips it and the
+    // dock title renders N/A.  Do not coerce it to 0.
+    value: (s) => s.gpu_load_pct ?? -1,
+    critical: (s) => (s.gpu_load_pct ?? -1) > 95 },
   { key: "vram",  color: "green",  title: () => t("显存占用", "VRAM Usage"),
     value: (s) => (s.vram_total_gb > 0 ? (s.vram_driver_used_gb / s.vram_total_gb) * 100 : 0),
     critical: (s) => s.vram_total_gb > 0 && (s.vram_driver_used_gb / s.vram_total_gb) > 0.95 },
@@ -1530,11 +1532,16 @@ function renderRAM(snap) {
 }
 
 function renderEngine(snap) {
-  const load = snap.gpu_load_pct ?? 0;
+  // -1 = load cannot be measured (e.g. zero engine groups on Linux).  Showing
+  // a green 0.0% there would claim "idle" for a possibly fully-loaded card.
+  const load = snap.gpu_load_pct ?? -1;
   const freq = snap.gpu_freq_mhz ?? 0;
   const temp = snap.gpu_temp_c   ?? -1;
-  const cls  = load > 95 ? "xpusys-critical" : load > 80 ? "xpusys-warn" : "xpusys-ok";
-  let html = `GPU<span class="n-pct">${load.toFixed(1)}%</span>`;
+  const known = load >= 0;
+  const cls  = !known ? "xpusys-na"
+             : load > 95 ? "xpusys-critical"
+             : load > 80 ? "xpusys-warn" : "xpusys-ok";
+  let html = `GPU<span class="n-pct">${known ? load.toFixed(1) + "%" : "---"}</span>`;
   if (freq > 0)  html += `@<span class="n-mhz">${Math.round(freq)}MHz</span>`;
   if (temp >= 0) html += `|<span class="n-temp">${Math.round(temp)}°C</span>`;
   setHTML("engine", html, cls);
@@ -1794,21 +1801,32 @@ function buildRAMTip(snap, eng) {
 }
 
 function buildEngineTip(snap, eng) {
-  const load = snap.gpu_load_pct ?? 0;
+  // -1 = load not measurable (zero engine groups). Report as N/A, never 0 %.
+  const load = snap.gpu_load_pct ?? -1;
   const freq = snap.gpu_freq_mhz ?? 0;
   const temp = snap.gpu_temp_c   ?? -1;
-  const c    = load > 95 ? "var(--xpusys-crit)" : load > 80 ? "var(--xpusys-warn)" : "var(--xpusys-ok)";
+  const known = load >= 0;
+  const c    = !known ? "var(--xpusys-na)"
+             : load > 95 ? "var(--xpusys-crit)"
+             : load > 80 ? "var(--xpusys-warn)" : "var(--xpusys-ok)";
   const tc   = temp > 85 ? "var(--xpusys-crit)" : temp > 70 ? "var(--xpusys-warn)" : "var(--xpusys-cyan)";
+  const loadTxt = known ? load.toFixed(1) + " %" : "N/A";
   if (eng) {
     return tipTitle("📊 GPU Engine")
-      + tipRow("Load",  load.toFixed(1) + " %", c)
+      + tipRow("Load",  loadTxt, c)
       + (freq > 0  ? tipRow("Clock", Math.round(freq) + " MHz") : "")
-      + (temp >= 0 ? tipRow("Temp",  Math.round(temp) + " °C", tc) : "");
+      + (temp >= 0 ? tipRow("Temp",  Math.round(temp) + " °C", tc) : "")
+      + (!known ? `<div style="color:#888;margin-top:4px">` +
+                  `No engine groups exposed by the driver (engine counters ` +
+                  `need GPU PMU access). Other metrics are unaffected.</div>` : "");
   }
   return tipTitle("📊 GPU 引擎")
-    + tipRow("负载", load.toFixed(1) + " %", c)
+    + tipRow("负载", loadTxt, c)
     + (freq > 0  ? tipRow("频率", Math.round(freq) + " MHz") : "")
-    + (temp >= 0 ? tipRow("温度", Math.round(temp) + " °C", tc) : "");
+    + (temp >= 0 ? tipRow("温度", Math.round(temp) + " °C", tc) : "")
+    + (!known ? `<div style="color:#888;margin-top:4px">` +
+                `驱动未提供引擎组（引擎计数需要 GPU PMU 访问权限）。` +
+                `其余指标不受影响。</div>` : "");
 }
 
 function buildVRAMTip(snap, eng) {
