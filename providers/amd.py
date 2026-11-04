@@ -34,6 +34,15 @@ logger = logging.getLogger("XPUSYSMonitor")
 
 
 def _is_admin() -> bool:
+    # POSIX first: ctypes.windll does not exist on Linux, and AMDProvider *is*
+    # used on Linux (see _detect_amd_linux).  The old code caught the
+    # AttributeError and returned False, so every Linux AMD user was reported
+    # as non-admin.
+    if os.name != "nt":
+        try:
+            return os.geteuid() == 0
+        except Exception:
+            return False
     try:
         import ctypes
         return bool(ctypes.windll.shell32.IsUserAnAdmin())

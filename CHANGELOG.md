@@ -6,6 +6,38 @@
 
 ## English
 
+### v1.0.18 — 2026-11-04
+
+#### ✨ Linux support for the Intel provider
+
+The Intel provider was unusable on Linux: `providers/intel.py` hardcoded `ctypes.WinDLL("ze_loader.dll")`, which does not exist on POSIX. Worse, the surrounding `except OSError` could not catch the resulting `AttributeError`, so the failure escaped as a generic "failed to initialise".
+
+- **Platform-aware loader.** `libze_loader.so.1` on POSIX (`ctypes.CDLL`), `ze_loader.dll` on Windows (`ctypes.WinDLL`, unchanged). Collected into `_lz_loader_name()` / `_open_library()`.
+- **`_is_admin()`** now uses `os.geteuid() == 0` on POSIX instead of `ctypes.windll.shell32`. Without this it always returned `False`, silently disabling power telemetry.
+- **`_get_cpu_info()`** reads `model name` from `/proc/cpuinfo` on POSIX (with a `Hardware` fallback for ARM boards), then falls back to `platform.processor()`. This is what produced `CPU=''` in the Linux report — `platform.processor()` is empty on most distros.
+- **`_detect_intel_driver()`** (the torch-less fallback tier) used the same unconditional `WinDLL` with a too-narrow `except`; both fixed.
+- Log text no longer says "ze_loader.dll" on platforms where that is wrong.
+
+#### 🛡️ One-time self-test before binding the driver (POSIX only)
+
+A SIGSEGV during Level Zero init was reported on bare-metal Linux and **never reproduced** (the reporter migrated to a Podman container where it does not occur, and neither the duplicate-loader nor the `stype` hypothesis held up). Since the actual fault is unknown, the driver is not bound in-process until a **throwaway child process** has walked the same call sequence:
+
+| child outcome | action |
+|---|---|
+| exits 0 (or non-zero — a *clean* failure) | bind in the main process; the provider handles a clean failure itself |
+| killed by a signal | refuse; log the signal; ComfyUI keeps running with GPU metrics unavailable |
+| hangs past 20 s | refuse; log the timeout |
+
+Measured cost: one interpreter start. On the reference machine the embedded probe script added **17 ms** over a bare `python -c pass` (~200 ms vs ~184 ms), and on Linux this lands around 50–150 ms total — once per process, never on Windows. Results are cached per loader name, so `select_device()` does not re-probe. Escape hatch: `XPUSYS_SKIP_LZ_PROBE=1`.
+
+#### 📝 Notes
+
+- **GPU load can still read as unavailable on Linux**, and that is not a plugin bug: `zesDeviceEnumEngineGroups` may return success with **zero** engine groups when GPU PMU counters are blocked (`kernel.perf_event_paranoid`, container isolation). v1.0.17's `-1` convention already makes the UI show `GPU ---` instead of a false `0.0%`; VRAM, clock, temperature and power are unaffected.
+- Windows is untouched by design: the self-test short-circuits, the loader name and `ctypes.WinDLL` call are identical, and the Intel provider was re-verified end to end (12 engine groups, device name, PCI ID, VRAM, clock, load).
+- Verified with 16 assertions covering every branch of the self-test: a child killed by SIGSEGV/SIGABRT/SIGILL is refused, a clean success *and* a clean failure are allowed, timeouts and spawn failures are refused, the result is cached, the override works, and Windows never spawns a child.
+
+---
+
 ### v1.0.17 — 2026-11-04
 
 #### 🐛 Bug Fixes
@@ -383,6 +415,38 @@ Low-end consumer cards (A310, A370M, A350M) and the embedded E-series are exclud
 ---
 
 ## 中文
+
+### v1.0.18 — 2026-11-04
+
+#### ✨ Intel provider 支持 Linux
+
+Intel provider 在 Linux 上完全不可用：`providers/intel.py` 硬编码 `ctypes.WinDLL("ze_loader.dll")`，而 POSIX 上没有这个 API。更糟的是外层的 `except OSError` 接不住由此产生的 `AttributeError`，于是失败以笼统的 "failed to initialise" 冒了出来。
+
+- **平台化加载器**：POSIX 用 `libze_loader.so.1`（`ctypes.CDLL`），Windows 保持 `ze_loader.dll`（`ctypes.WinDLL`，行为不变）。收敛到 `_lz_loader_name()` / `_open_library()`。
+- **`_is_admin()`** 在 POSIX 上改用 `os.geteuid() == 0`，不再调 `ctypes.windll.shell32`。否则它恒返回 `False`，功率遥测被静默关闭。
+- **`_get_cpu_info()`** 在 POSIX 上从 `/proc/cpuinfo` 读 `model name`（ARM 板子回退 `Hardware` 字段），再回退 `platform.processor()`。这正是 Linux 报告里 `CPU=''` 的来源——多数发行版上 `platform.processor()` 返回空串。
+- **`_detect_intel_driver()`**（torch 不可用时的兜底探测）原本是同一个无条件 `WinDLL` + 同一个过窄的 `except`，一并修正。
+- 日志文案不再在平台不支持时说 "ze_loader.dll"。
+
+#### 🛡️ 绑定驱动前的一次性自检（仅 POSIX）
+
+曾有人在裸机 Linux 上报告 Level Zero 初始化阶段 SIGSEGV，**始终无法复现**（报告者已迁到 Podman 容器，崩溃不再出现；双份 loader 与 `stype` 两个假设都未成立）。既然真实故障点未知，插件不会直接在进程内绑定驱动，而是先让一个**临时子进程**把同一套调用序列走一遍：
+
+| 子进程结果 | 处理 |
+|---|---|
+| 正常退出 0（或非 0 —— 属于*干净失败*） | 在主进程绑定；干净失败由 provider 自己处理 |
+| 被信号杀死 | 拒绝绑定，记录信号名，ComfyUI 继续运行（GPU 指标不可用） |
+| 超过 20 秒无响应 | 拒绝绑定，记录超时 |
+
+实测开销：一次解释器启动。参考机器上自检脚本相对空的 `python -c pass` 只多 **17 ms**（约 200 ms vs 184 ms），Linux 上总开销约 50–150 ms——每进程一次，Windows 完全不触发。结果按加载器名缓存，`select_device()` 不会重复探测。逃逸阀：`XPUSYS_SKIP_LZ_PROBE=1`。
+
+#### 📝 说明
+
+- **Linux 上 GPU 负载仍可能显示为不可用**，且这不是插件的问题：当 GPU PMU 计数被拦住时（`kernel.perf_event_paranoid`、容器隔离），`zesDeviceEnumEngineGroups` 可能返回成功却给出 **0 个**引擎组。v1.0.17 的 `-1` 约定已让 UI 显示 `GPU ---` 而非虚假的 `0.0%`；显存、频率、温度、功耗均不受影响。
+- Windows 有意保持零改动：自检直接短路，加载器名称与 `ctypes.WinDLL` 调用完全一致，并已端到端复验 Intel provider（12 个引擎组、设备名、PCI ID、显存、频率、负载）。
+- 16 条断言覆盖自检全部分支：子进程死于 SIGSEGV/SIGABRT/SIGILL 一律拒绝，干净成功*与*干净失败都放行，超时与派生失败一律拒绝，结果会缓存，逃逸阀生效，Windows 永不派生子进程。
+
+---
 
 ### v1.0.17 — 2026-11-04
 

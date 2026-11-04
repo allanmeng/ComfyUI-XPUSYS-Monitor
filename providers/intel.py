@@ -12,6 +12,7 @@ Power           : Level Zero Sysman — zesPowerGetEnergyCounter  (admin only)
 import ctypes
 import logging
 import os
+import sys
 import threading
 import time
 from typing import Optional, Tuple
@@ -64,10 +65,184 @@ class _ZesEngineStats(ctypes.Structure):
 
 
 # ---------------------------------------------------------------------------
+# Level Zero loader — platform-aware loading
+# ---------------------------------------------------------------------------
+
+# soname first: the dynamic linker resolves it through ldconfig / rpath, which
+# is what a distribution-installed loader (and PyTorch's bundled copy) expect.
+_LZ_LOADER_POSIX = ("libze_loader.so.1", "libze_loader.so")
+_LZ_LOADER_NT    = "ze_loader.dll"
+
+
+def _lz_loader_name() -> Optional[str]:
+    """Return the first loader this platform can actually dlopen, or None.
+
+    Windows keeps the historical behaviour exactly: the bare name is handed to
+    WinDLL, which searches the standard DLL directories.  POSIX tries the
+    versioned soname first (what ldconfig provides after installing the
+    Level Zero runtime) and then the unversioned dev symlink.
+
+    The returned name is only *tested* for loadability here; the handle is
+    discarded.  A plain dlopen cannot crash — the reported Linux fault happened
+    during init — and the self-test below still runs before anything is called.
+    """
+    if os.name == "nt":
+        return _LZ_LOADER_NT
+    for cand in _LZ_LOADER_POSIX:
+        try:
+            _open_library(cand)
+            return cand
+        except OSError:
+            continue
+    return None
+
+
+def _open_library(name: str):
+    """ctypes.WinDLL on Windows, ctypes.CDLL elsewhere.
+
+    Both raise OSError on failure, which is what callers expect.  On POSIX
+    there is no WinDLL at all — using it raised AttributeError, which slipped
+    past every `except OSError` in the Intel path and surfaced as a generic
+    "failed to initialise" on Linux.
+    """
+    if os.name == "nt":
+        return ctypes.WinDLL(name)
+    return ctypes.CDLL(name, use_errno=True)
+
+
+# Run in a throwaway child process.  Walks the same Level Zero calls the
+# provider walks, so a native crash in ANY of them is contained here instead of
+# killing ComfyUI.  Exits 0 = usable, 1 = clean failure (no crash), killed by a
+# signal = the child died natively.
+_LZ_PROBE_SRC = r"""
+import ctypes, os, sys
+os.environ["ZES_ENABLE_SYSMAN"] = "1"
+lib = ctypes.CDLL(sys.argv[1], use_errno=True)
+
+def fn(name, argtypes):
+    f = getattr(lib, name)
+    f.restype = ctypes.c_int
+    f.argtypes = argtypes
+    return f
+
+U32P = ctypes.POINTER(ctypes.c_uint32)
+VOID = ctypes.c_void_p
+
+if fn("zesInit", [ctypes.c_uint32])(0) != 0:
+    sys.exit(1)
+
+drv = fn("zesDriverGet", [U32P, VOID])
+cnt = ctypes.c_uint32(0)
+drv(ctypes.byref(cnt), None)
+if cnt.value == 0:
+    sys.exit(1)
+drivers = (VOID * cnt.value)()
+drv(ctypes.byref(cnt), drivers)
+
+dev = fn("zesDeviceGet", [VOID, U32P, VOID])
+dcnt = ctypes.c_uint32(0)
+dev(drivers[0], ctypes.byref(dcnt), None)
+if dcnt.value == 0:
+    sys.exit(1)
+devices = (VOID * dcnt.value)()
+dev(drivers[0], ctypes.byref(dcnt), devices)
+h = devices[0]
+
+fn("zesDeviceGetProperties", [VOID, VOID])(h, (ctypes.c_uint8 * 2048)())
+
+for name in ("zesDeviceEnumEngineGroups",
+             "zesDeviceEnumMemoryModules",
+             "zesDeviceEnumFrequencyDomains",
+             "zesDeviceEnumTemperatureSensors",
+             "zesDeviceEnumPowerDomains"):
+    e = fn(name, [VOID, U32P, VOID])
+    n = ctypes.c_uint32(0)
+    e(h, ctypes.byref(n), None)
+    if n.value:
+        arr = (VOID * n.value)()
+        e(h, ctypes.byref(n), arr)
+
+sys.exit(0)
+"""
+
+# loader name -> True (safe) / False (crash or hang).  Probed at most once per
+# process; _load() is re-entered by select_device().
+_LZ_PROBE_CACHE: dict = {}
+_LZ_PROBE_TIMEOUT_S = 20.0
+
+
+def _probe_level_zero(loader_name: str) -> bool:
+    """POSIX only: decide whether binding Level Zero in-process is safe.
+
+    The original bare-metal Linux report was a SIGSEGV during Level Zero init
+    that killed the whole ComfyUI process.  It was never reproduced, so rather
+    than gamble we try the sequence in a child first: if the child dies by a
+    signal (or hangs), the main process never touches the library.
+
+    Cost is one interpreter start plus the driver init, only on POSIX, and only
+    the first time per process.  A *clean* failure (child exits non-zero) is
+    not a crash — the provider handles that case itself — so it is allowed.
+    """
+    if os.name == "nt":
+        return True                       # Windows path is known-good
+    if os.environ.get("XPUSYS_SKIP_LZ_PROBE") == "1":
+        logger.warning("XPUSYSMonitor: XPUSYS_SKIP_LZ_PROBE=1 — skipping the "
+                       "Level Zero self-test; a driver crash can now take "
+                       "ComfyUI down.")
+        return True
+    cached = _LZ_PROBE_CACHE.get(loader_name)
+    if cached is not None:
+        return cached
+
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _LZ_PROBE_SRC, loader_name],
+            capture_output=True, text=True, timeout=_LZ_PROBE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            f"XPUSYSMonitor: Level Zero self-test timed out after "
+            f"{_LZ_PROBE_TIMEOUT_S:.0f}s — not binding it in-process. "
+            f"Set XPUSYS_SKIP_LZ_PROBE=1 to override."
+        )
+        _LZ_PROBE_CACHE[loader_name] = False
+        return False
+    except Exception as exc:
+        logger.warning(f"XPUSYSMonitor: Level Zero self-test could not run — {exc}")
+        _LZ_PROBE_CACHE[loader_name] = False
+        return False
+
+    if proc.returncode < 0:
+        logger.warning(
+            f"XPUSYSMonitor: Level Zero self-test crashed (signal "
+            f"{-proc.returncode}) — refusing to initialise it in-process so "
+            f"ComfyUI keeps running. GPU metrics will be unavailable. "
+            f"Set XPUSYS_SKIP_LZ_PROBE=1 to override."
+        )
+        _LZ_PROBE_CACHE[loader_name] = False
+        return False
+
+    if proc.returncode == 0:
+        logger.debug("XPUSYSMonitor: Level Zero self-test passed.")
+    else:
+        # Clean failure: let the real init produce its own diagnostics.
+        logger.debug(f"XPUSYSMonitor: Level Zero self-test exited "
+                     f"{proc.returncode} (clean failure, not a crash).")
+    _LZ_PROBE_CACHE[loader_name] = True
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Admin detection
 # ---------------------------------------------------------------------------
 
 def _is_admin() -> bool:
+    if os.name != "nt":
+        try:
+            return os.geteuid() == 0
+        except Exception:
+            return False
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
@@ -77,28 +252,54 @@ def _is_admin() -> bool:
 def _get_cpu_info() -> Tuple[str, int]:
     """Return (model_name, logical_thread_count). Called once at startup."""
     model = ""
-    try:
-        import winreg
-        key = winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE,
-            r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
-        )
-        model, _ = winreg.QueryValueEx(key, "ProcessorNameString")
-        winreg.CloseKey(key)
-        model = " ".join(model.strip().split())   # collapse extra spaces
-    except Exception:
+
+    if os.name != "nt":
+        # Linux: /proc/cpuinfo "model name".  platform.processor() is empty on
+        # most distros, which is what produced CPU='' in the original report.
         try:
-            import platform
-            model = platform.processor()
+            with open("/proc/cpuinfo", "r", errors="replace") as fh:
+                for line in fh:
+                    if line.lower().startswith("model name"):
+                        model = line.split(":", 1)[1]
+                        break
+                else:                     # ARM boards: no "model name" key
+                    for line in open("/proc/cpuinfo", "r", errors="replace"):
+                        if line.lower().startswith("hardware"):
+                            model = line.split(":", 1)[1]
+                            break
+            model = " ".join(model.strip().split())
         except Exception:
-            model = "Unknown CPU"
+            model = ""
+        if not model:
+            try:
+                import platform
+                model = platform.processor() or ""
+            except Exception:
+                model = ""
+    else:
+        try:
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+            )
+            model, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+            winreg.CloseKey(key)
+            model = " ".join(model.strip().split())   # collapse extra spaces
+        except Exception:
+            try:
+                import platform
+                model = platform.processor()
+            except Exception:
+                model = "Unknown CPU"
+
     threads = 0
     try:
         import psutil
         threads = psutil.cpu_count(logical=True) or 0
     except Exception:
         threads = os.cpu_count() or 0
-    return model, threads
+    return model or "Unknown CPU", threads
 
 
 # ---------------------------------------------------------------------------
@@ -132,10 +333,25 @@ class _LevelZeroSysman:
 
     def _load(self, is_admin: bool):
         os.environ["ZES_ENABLE_SYSMAN"] = "1"
+
+        loader = _lz_loader_name()
+        if loader is None:
+            logger.warning(
+                "XPUSYSMonitor: Level Zero loader not found (tried "
+                f"{', '.join(_LZ_LOADER_POSIX)}) — GPU metrics unavailable."
+            )
+            return
+
+        # POSIX only: confirm in a child process that the driver can be brought
+        # up without taking the interpreter down.  No-op on Windows.
+        if not _probe_level_zero(loader):
+            return
+
         try:
-            lib = ctypes.WinDLL("ze_loader.dll")
-        except OSError:
-            logger.warning("XPUSYSMonitor: ze_loader.dll not found.")
+            lib = _open_library(loader)
+        except OSError as exc:
+            logger.warning(f"XPUSYSMonitor: Level Zero loader {loader!r} not "
+                           f"available — {exc}")
             return
 
         try:
@@ -968,6 +1184,11 @@ def _get_cpu_base_mhz() -> int:
     global _cpu_base_mhz
     if _cpu_base_mhz:
         return _cpu_base_mhz
+    if os.name != "nt":
+        # Only reachable via _read_pdh_cpu_freq_mhz(), which already guards on
+        # os.name — but keep the guard here too so a direct call cannot raise
+        # ModuleNotFoundError (winreg) on Linux.
+        return 0
     try:
         import winreg
         with winreg.OpenKey(

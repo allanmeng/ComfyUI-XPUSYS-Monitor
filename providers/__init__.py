@@ -120,7 +120,7 @@ def auto_detect_provider(interval_ms: int = 1000) -> BaseGPUProvider:
     # --- Fallback: raw driver probing (torch not imported yet / non-std env) ---
     if _detect_intel_driver():
         logger.info(
-            "XPUSYSMonitor: ze_loader.dll found (torch unavailable) — "
+            "XPUSYSMonitor: Level Zero loader found (torch unavailable) — "
             "using IntelProvider."
         )
         from .intel import IntelProvider
@@ -363,12 +363,22 @@ def _detect_amd_linux() -> bool:
 # ---------------------------------------------------------------------------
 
 def _detect_intel_driver() -> bool:
-    """Return True if Intel Level Zero runtime (ze_loader.dll) is present."""
+    """Return True if the Intel Level Zero runtime is present.
+
+    Windows: ze_loader.dll.  POSIX: libze_loader.so.1.  Uses the same
+    platform-aware helper as IntelProvider — the previous unconditional
+    ctypes.WinDLL raised AttributeError on Linux, which `except OSError` could
+    not catch.
+    """
     import ctypes
+    name = "ze_loader.dll" if os.name == "nt" else "libze_loader.so.1"
     try:
-        ctypes.WinDLL("ze_loader.dll")
+        if os.name == "nt":
+            ctypes.WinDLL(name)
+        else:
+            ctypes.CDLL(name)
         return True
-    except OSError:
+    except (OSError, AttributeError):
         return False
 
 

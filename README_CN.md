@@ -503,7 +503,7 @@ echo [成功] 权限已提升，开始启动 ComfyUI...
 - ComfyUI（任意最新版本）
 - Python 3.10+
 - PyTorch 2.5+（Intel XPU 需使用 XPU 版构建）
-- Windows（当前主要测试环境）；Linux 理论兼容，欢迎反馈
+- Windows（当前主要测试环境）。Linux 现通过 `libze_loader.so.1` 加载 Level Zero，并有一次性的子进程自检保护，详见下方 *Linux 说明*。
 
 ---
 
@@ -522,6 +522,19 @@ echo [成功] 权限已提升，开始启动 ComfyUI...
 这是 **PYTHONPATH 劫持方案的预期限制**。适配器的运行时补丁层在 `torch.xpu.memory_allocated()` 无法观察到的层面拦截 CUDA API 调用。硬件层面的显存读取（Level Zero）不受影响，保持完全准确。
 
 验证方式：关闭 AIMDO-XPU，以原生 XPU 支持运行 ComfyUI，即可恢复完整的 `memory_allocated()` 追踪。
+
+### Linux 说明
+
+Intel provider 在 Linux 上现改用 `libze_loader.so.1`（Windows 专有的 `ze_loader.dll` 不再硬编码）。与 Windows 有两处差异：
+
+**一次性自检。** 曾有人在裸机 Linux 上报告 Level Zero 初始化阶段 SIGSEGV，且始终无法复现。因此插件在进程内绑定驱动之前，会先把同一套初始化序列在一个**临时子进程**里跑一遍：
+
+- 子进程正常退出 → 在主进程绑定驱动
+- 子进程被信号杀死，或超过 20 秒无响应 → 拒绝绑定，日志说明原因，ComfyUI 继续运行（GPU 指标不可用）
+
+开销是一次解释器启动（约 50–150 ms），**仅 Linux**，每个进程只做一次。Windows 完全不触发。可用 `XPUSYS_SKIP_LZ_PROBE=1` 跳过。
+
+**GPU 负载可能不可用。** `zesDeviceEnumEngineGroups` 可能调用成功却返回 **0 个**引擎组。引擎计数需要 GPU 性能计数器（PMU）访问权限，而这通常被 `kernel.perf_event_paranoid` 拦住（Ubuntu 默认为 4，无特权进程的 `perf_event_open` 直接返回 EACCES），容器环境下更常被隔离。此时 GPU 胶囊显示 `GPU ---`，而不是误导性的 `0.0%`；显存、频率、温度、功耗均不受影响。可在同一环境中运行 `intel_gpu_top` 验证——若它同样读不到引擎，则是环境限制，不是插件故障。
 
 ---
 

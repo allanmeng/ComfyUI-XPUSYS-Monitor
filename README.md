@@ -503,7 +503,7 @@ Adjustable in the **XPUSYS_Mon** section of ComfyUI's settings page:
 - ComfyUI (any recent version)
 - Python 3.10+
 - PyTorch 2.5+ (XPU build required for Intel Arc)
-- Windows (primary test environment); Linux theoretically compatible — feedback welcome
+- Windows (primary test environment). Linux now loads the Level Zero runtime via `libze_loader.so.1` behind a one-time child-process self-test — see *Linux Notes* below.
 
 ---
 
@@ -522,6 +522,19 @@ On Intel Arc systems running the [ComfyUI-AIMDO-XPU](https://github.com/allanmen
 This is an **expected limitation** of the PYTHONPATH hijack approach. The adapter's runtime-patching layer intercepts CUDA API calls at a level that `torch.xpu.memory_allocated()` cannot observe. The hardware-level VRAM reading (Level Zero) is unaffected and remains fully accurate.
 
 To verify: disabling AIMDO-XPU and running ComfyUI with native XPU support restores full `memory_allocated()` tracking.
+
+### Linux Notes
+
+The Intel provider now loads `libze_loader.so.1` on Linux instead of the Windows-only `ze_loader.dll`. Two things behave differently from Windows:
+
+**One-time self-test.** A SIGSEGV was once reported during Level Zero init on bare-metal Linux and never reproduced. So before binding the driver in-process, the plugin runs the same init sequence in a **throwaway child process**:
+
+- child exits normally → bind the driver in the main process
+- child is killed by a signal, or hangs past 20 s → refuse, log why, and keep ComfyUI running with GPU metrics unavailable
+
+This costs one interpreter start (~50–150 ms), only on Linux, only once per process. On Windows it does not run at all. Override with `XPUSYS_SKIP_LZ_PROBE=1` if you want to skip it.
+
+**GPU load may be unavailable.** `zesDeviceEnumEngineGroups` can succeed and still return **zero** engine groups. Engine counters need GPU performance-counter (PMU) access, which is commonly blocked by `kernel.perf_event_paranoid` (Ubuntu defaults to 4, which denies unprivileged `perf_event_open`) and by container isolation. When this happens the GPU capsule shows `GPU ---` rather than a misleading `0.0%`; VRAM, clock, temperature and power are unaffected. Confirm with `intel_gpu_top` in the same environment — if it also fails to read engines, it is an environment limit, not a plugin fault.
 
 ---
 
